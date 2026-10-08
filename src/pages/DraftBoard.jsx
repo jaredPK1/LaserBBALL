@@ -5,6 +5,7 @@ import {
   CATS, DEFAULT_SETTINGS, computeValues, teamOnClock, picksForSlot, slotFill,
   recommend, teamProfile, importProjections,
 } from '../draft/engine';
+import { analyze, scoutingNotes } from '../history/analyze';
 
 const STORE = 'hi_draft_v1';
 const POSITIONS = ['ALL', 'PG', 'SG', 'SF', 'PF', 'C'];
@@ -15,6 +16,19 @@ function load() {
     if (s && Array.isArray(s.pool)) return { ...s, settings: { ...DEFAULT_SETTINGS, ...s.settings } };
   } catch { /* fresh state */ }
   return { pool: [], meta: null, settings: DEFAULT_SETTINGS, picks: [], teamNames: {} };
+}
+
+// Scouting reports from League Intel's cached past seasons (if visited on this device)
+function loadScouting() {
+  try {
+    const seasons = Object.keys(localStorage).filter(k => k.startsWith('hi_hist_'))
+      .map(k => JSON.parse(localStorage.getItem(k))).filter(s => s?.teams?.length);
+    if (!seasons.length) return [];
+    const r = analyze(seasons, []);
+    return [...(r.me ? [r.me] : []), ...r.scouting].map(p => ({ id: p.id, nickname: p.nickname, isMe: p.isMe, notes: scoutingNotes(p) }));
+  } catch {
+    return [];
+  }
 }
 
 const zClass = z => (z == null ? '' : z >= 1.5 ? 'z z-hi' : z >= 0.5 ? 'z z-up' : z <= -1.5 ? 'z z-lo' : z <= -0.5 ? 'z z-dn' : 'z');
@@ -36,6 +50,10 @@ export default function DraftBoard({ authed }) {
   }, [state]);
 
   const { pool, settings, picks, teamNames } = state;
+  const teamManagers = state.teamManagers || {};
+  const [scouting] = useState(loadScouting);
+  const scoutById = useMemo(() => new Map(scouting.map(p => [p.id, p])), [scouting]);
+  const scoutFor = t => scoutById.get(teamManagers[t]);
   const { teams, rounds, slot, weights } = settings;
   const update = patch => setState(s => ({ ...s, ...patch }));
   const setSettings = patch => setState(s => ({ ...s, settings: { ...s.settings, ...patch } }));
@@ -82,7 +100,7 @@ export default function DraftBoard({ authed }) {
 
   const draft = key => { if (!done) update({ picks: [...picks, key] }); };
   const undo = () => update({ picks: picks.slice(0, -1) });
-  const teamName = t => (t === slot ? 'You' : teamNames[t] || `Team ${t}`);
+  const teamName = t => (t === slot ? 'You' : teamNames[t] || scoutFor(t)?.nickname || `Team ${t}`);
 
   async function loadYahoo() {
     setBusy(true); setMsg(null);
@@ -127,6 +145,9 @@ export default function DraftBoard({ authed }) {
             <div className="clock-main">
               <span className="stat">#{currentPick}</span> · R{clock.round}.{clock.inRound} · {myTurn ? 'YOU ARE ON THE CLOCK' : `${teamName(clock.team)} on the clock`}
             </div>
+            {!myTurn && scoutFor(clock.team)?.notes.length > 0 && (
+              <div className="clock-scout meta">{scoutFor(clock.team).notes.slice(0, 3).join(' · ')}</div>
+            )}
             <div className="clock-sub">
               {!slot ? 'Set your draft slot in Setup to get pick alerts.'
                 : myTurn ? `After this, your next pick is #${myUpcoming[1] ?? '—'}`
@@ -135,6 +156,7 @@ export default function DraftBoard({ authed }) {
           </>
         )}
         <div className="clock-actions">
+          {scouting.length === 0 && <span className="meta">Open League Intel once to get scouting notes here</span>}
           <button className="btn btn-ghost" onClick={undo} disabled={!picks.length}>Undo</button>
         </div>
       </div>
@@ -232,6 +254,14 @@ export default function DraftBoard({ authed }) {
                 <input className="team-title-input" value={teamNames[t] || ''} placeholder={`Team ${t}`}
                   onChange={e => update({ teamNames: { ...teamNames, [t]: e.target.value } })} />
               )}
+              {t !== slot && scouting.length > 0 && (
+                <select className="input team-mgr" value={teamManagers[t] || ''}
+                  onChange={e => update({ teamManagers: { ...teamManagers, [t]: e.target.value } })}>
+                  <option value="">Who is this? (scouting)</option>
+                  {scouting.filter(m => !m.isMe).map(m => <option key={m.id} value={m.id}>{m.nickname}</option>)}
+                </select>
+              )}
+              {t !== slot && scoutFor(t)?.notes.map((n, i) => <div key={i} className="meta scout-line">• {n}</div>)}
               {rosters[t].map(p => <div key={p.key} className="team-pick"><span className="stat">{p.pickNo}</span> {p.name} <span className="meta">{(p.pos || []).join('/')}</span></div>)}
             </div>
           ))}

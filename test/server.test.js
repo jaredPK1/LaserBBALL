@@ -51,6 +51,32 @@ for (let s = 0; s < 50; s += 25) {
     ...Array.from({ length: 25 }, (_, i) => ({ [i]: player(`k${s + i}`, `Player ${s + i}`, 'NY', 'PG,SG', '', { ...avg, '12': String(30 - (s + i) / 3) }) }))) }] } };
 }
 
+// History: current league renewed from 454.l.777
+const mgrTeam = (key, name, guid, me, extra = []) => [{ team_key: key }, { name }, { number_of_moves: me ? 12 : 40 }, { number_of_trades: 0 },
+  { managers: [{ manager: { guid, nickname: name.toLowerCase(), ...(me ? { is_current_login: '1' } : {}) } }] }, ...extra];
+Object.assign(FIX, {
+  'league/466.l.33458': { fantasy_content: { league: [{ league_key: '466.l.33458', season: '2026', name: 'WFH', num_teams: 2, renew: '454_777', is_finished: 0 }] } },
+  'league/454.l.777': { fantasy_content: { league: [{ league_key: '454.l.777', season: '2025', name: 'WFH', num_teams: 2, renew: '', is_finished: 1, start_week: 1, end_week: 2, current_week: 2 }] } },
+  'league/466.l.33458/teams': { fantasy_content: { league: [{}, { teams: { '0': { team: [mgrTeam('466.l.33458.t.1', 'Me FC', 'G1', true)] }, '1': { team: [mgrTeam('466.l.33458.t.2', 'Them', 'G2', false)] }, count: 2 } }] } },
+  'league/454.l.777/standings': { fantasy_content: { league: [{}, { standings: [{ teams: {
+    '0': { team: [mgrTeam('454.l.777.t.1', 'Old Me', 'G1', true), { team_standings: { rank: 2, playoff_seed: 2, outcome_totals: { wins: 5, losses: 7, ties: 1 } } }] },
+    '1': { team: [mgrTeam('454.l.777.t.2', 'Old Them', 'G2', false), { team_standings: { rank: 1, playoff_seed: 1, outcome_totals: { wins: 7, losses: 5, ties: 1 } } }] },
+    count: 2 } }] }] } },
+  'league/454.l.777/draftresults': { fantasy_content: { league: [{}, { draft_results: {
+    '0': { draft_result: { pick: 1, round: 1, team_key: '454.l.777.t.1', player_key: '454.p.1' } },
+    '1': { draft_result: { pick: 2, round: 1, team_key: '454.l.777.t.2', player_key: '454.p.2' } },
+    count: 2 } }] } },
+  'league/454.l.777/players;player_keys=454.p.1,454.p.2/stats;type=season': { fantasy_content: { league: [{}, { players: { '0': player('454.p.1', 'Star One', 'BOS', 'PG', '', avg), '1': player('454.p.2', 'Star Two', 'DEN', 'C', '', avg), count: 2 } }] } },
+  'league/454.l.777/players;player_keys=454.p.1,454.p.2/draft_analysis': { fantasy_content: { league: [{}, { players: { '0': { player: [[{ player_key: '454.p.1' }], { draft_analysis: [{ average_pick: '3.5' }, { average_round: '1' }] }] }, count: 1 } }] } },
+});
+for (const w of [1, 2]) {
+  FIX[`league/454.l.777/scoreboard;week=${w}`] = { fantasy_content: { league: [{}, { scoreboard: { '0': { matchups: { '0': { matchup: {
+    week: w, is_playoffs: w === 2 ? '1' : '0',
+    stat_winners: [{ stat_winner: { stat_id: '8', winner_team_key: '454.l.777.t.2' } }, { stat_winner: { stat_id: '12', is_tied: '1' } }],
+    '0': { teams: { '0': { team: [[{ team_key: '454.l.777.t.1' }]] }, '1': { team: [[{ team_key: '454.l.777.t.2' }]] }, count: 2 } },
+  } }, count: 1 } }, week: w } }] } };
+}
+
 const NBA = {
   'scheduleLeagueV2.json': { leagueSchedule: { gameDates: [
     { games: [{ gameId: '0022600100', gameDateEst: `${today}T00:00:00Z`, gameDateTimeUTC: `${today}T23:30:00Z`, homeTeam: { teamTricode: 'BOS' }, awayTeam: { teamTricode: 'DEN' } }] },
@@ -147,4 +173,28 @@ test('schedule endpoints', async () => {
   assert.deepEqual(t.teamsPlaying.sort(), ['BOS', 'DEN']);
   const w = await (await get('/api/schedule/week-days')).json();
   assert.equal(w.schedule.LAL[0].opp, 'PHX');
+});
+
+test('history walks the renewal chain and parses a past season', async () => {
+  const r = await get('/api/history/seasons');
+  const d = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.deepEqual(d.seasons.map(s => s.leagueKey), ['466.l.33458', '454.l.777']);
+  assert.equal(d.currentTeams[1].managerId, 'G2');
+
+  const s = await (await get('/api/history/season/454.l.777')).json();
+  assert.equal(s.season, 2025);
+  const me = s.teams.find(t => t.isMe);
+  assert.equal(me.rank, 2);
+  assert.equal(me.ties, 1);
+  assert.equal(me.moves, 12);
+  assert.equal(s.draft[0].name, 'Star One');
+  assert.equal(s.draft[0].adp, 3.5);
+  assert.equal(s.draft[1].adp, undefined);
+  assert.equal(s.weeks.length, 2);
+  assert.equal(s.weeks[0].matchups[0].winners['8'], '454.l.777.t.2');
+  assert.equal(s.weeks[0].matchups[0].winners['12'], 'tie');
+  assert.equal(s.weeks[1].matchups[0].isPlayoffs, true);
+
+  assert.equal((await get('/api/history/season/bad;key')).status, 400);
 });

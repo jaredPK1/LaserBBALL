@@ -95,3 +95,9 @@ export const getGameNight = (week) =>
 
 export const getDraftPool = (season) =>
   apiCall(() => axios.get(`${BASE}/draft/pool${season ? `?season=${season}` : ''}`, { timeout: 60000 }));
+
+export const getHistorySeasons = () =>
+  apiCall(() => axios.get(`${BASE}/history/seasons`));
+
+export const getHistorySeason = (leagueKey) =>
+  apiCall(() => axios.get(`${BASE}/history/season/${encodeURIComponent(leagueKey)}`, { timeout: 90000 }));

@@ -4,7 +4,10 @@ import { startAuth, clearTokens } from '../api/yahoo';
 const navItems = [
   {
     section: 'DRAFT',
-    items: [{ icon: '\u{1F4CA}', label: 'Draft Board', path: '/draft' }],
+    items: [
+      { icon: '\u{1F4CA}', label: 'Draft Board', path: '/draft' },
+      { icon: '\u{1F50E}', label: 'League Intel', path: '/intel' },
+    ],
   },
   {
     section: 'GAME DAY',

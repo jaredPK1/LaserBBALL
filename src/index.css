@@ -345,3 +345,33 @@ tr:hover td {
   .gn-score { padding: 12px; gap: 6px; }
   .clock-main { font-size: 20px; }
 }
+
+/* ── League intel ────────────────────────────────────── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.card h3 { margin-bottom: 6px; }
+.insights { display: grid; gap: 8px; margin-bottom: 12px; }
+.insight { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--muted); border-radius: 8px; padding: 12px 14px; }
+.insight.sev-high { border-left-color: var(--red); }
+.insight.sev-med { border-left-color: var(--gold); }
+.insight.sev-info { border-left-color: var(--blue); }
+.insight-text { font-size: 15px; margin: 2px 0 4px; }
+.insight-fix { font-size: 13px; color: var(--text2); }
+.cmprow { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.cmpbars { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.cmpbar { height: 7px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+.cmpfill { height: 100%; border-radius: 4px; }
+.cmpfill.me { background: var(--accent); }
+.cmpfill.bad { background: var(--red); }
+.cmpfill.top { background: var(--muted); }
+.legend { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 8px; vertical-align: middle; }
+.legend.me { background: var(--accent); }
+.legend.top { background: var(--muted); }
+.roi-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.roi-cell { background: var(--surface2); border-radius: 6px; padding: 6px 10px; text-align: center; min-width: 52px; }
+.scout-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.team-card.former { opacity: 0.6; }
+.scout-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; }
+.scout-notes { margin: 0 0 8px 18px; font-size: 13px; line-height: 1.5; }
+.clock-scout { flex-basis: 100%; color: var(--gold); order: 3; }
+.team-mgr { width: 100%; padding: 5px 8px; font-size: 12px; margin-bottom: 6px; }
+.scout-line { color: var(--gold); margin-bottom: 2px; }

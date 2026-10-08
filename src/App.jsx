@@ -10,6 +10,7 @@ import DraftBoard from './pages/DraftBoard';
 import ScheduleStrength from './pages/ScheduleStrength';
 import GamePlan from './pages/GamePlan';
 import GameNight from './pages/GameNight';
+import LeagueIntel from './pages/LeagueIntel';
 import Today from './pages/Today';
 import Connect from './pages/Connect';
 
@@ -46,6 +47,7 @@ function AppInner() {
           <Route path="/startsit" element={<StartSit />} />
           <Route path="/waivers" element={<WaiverWire />} />
           <Route path="/draft" element={<DraftBoard authed={authed} />} />
+          <Route path="/intel" element={<LeagueIntel />} />
           <Route path="/schedule" element={<ScheduleStrength />} />
           <Route path="*" element={<Navigate to={authed ? '/gamenight' : '/connect'} replace />} />
         </Routes>

@@ -4,6 +4,7 @@ import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myCo
 import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } from './nba.js';
 import { gameNight } from './gamenight.js';
 import { draftPool } from './draft.js';
+import { historySeasons, historySeason } from './history.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -133,6 +134,8 @@ app.get('/api/schedule/weekly', wrap(async (req, res) => {
 app.get('/api/nba/scoreboard', wrap(() => getScoreboard()));
 app.get('/api/gamenight', wrap(gameNight));
 app.get('/api/draft/pool', wrap(draftPool));
+app.get('/api/history/seasons', wrap(historySeasons));
+app.get('/api/history/season/:leagueKey', wrap(historySeason));
 
 app.use('/api', (req, res) => res.status(404).json({ error: `No route ${req.method} ${req.path}` }));
 
