@@ -33,6 +33,9 @@ export function authRedirect(req, res) {
     redirect_uri: redirectUri(req),
     response_type: 'code',
     language: 'en-us',
+    // Ask for Fantasy read explicitly; without it Yahoo can issue a token that
+    // lacks fantasy access when the app has other permissions (403 "not authorized")
+    scope: process.env.YAHOO_SCOPE || 'fspt-r',
     state,
   });
   res.redirect(`${AUTH_URL}?${params}`);
