@@ -33,7 +33,11 @@ app.post('/api/auth/logout', wrap(logout));
 app.get('/api/health', wrap(async () => {
   const check = async fn => { try { return { ok: true, info: await fn() }; } catch (e) { return { ok: false, error: e.message }; } };
   return {
-    yahooConfigured: !!(process.env.YAHOO_CLIENT_ID && process.env.YAHOO_CLIENT_SECRET),
+    yahooConfigured: !!(process.env.YAHOO_CLIENT_ID?.trim() && process.env.YAHOO_CLIENT_SECRET?.trim()),
+    // Presence only — never values
+    env: Object.fromEntries(['YAHOO_CLIENT_ID', 'YAHOO_CLIENT_SECRET', 'SESSION_SECRET', 'LEAGUE_ID', 'PUBLIC_URL']
+      .map(k => [k, process.env[k] === undefined ? 'missing' : process.env[k].trim() ? 'set' : 'empty'])),
+    redirectUri: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, '')}/api/auth/callback` : '(derived from request host)',
     sessionConfigured: (process.env.SESSION_SECRET || '').length >= 32,
     nbaSchedule: await check(async () => `${(await getSchedule()).length} games`),
     nbaScoreboard: await check(async () => { const s = await getScoreboard(); return `${s.date}: ${s.games.length} games`; }),
