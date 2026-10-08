@@ -77,16 +77,20 @@ for (const w of [1, 2]) {
   } }, count: 1 } }, week: w } }] } };
 }
 
-const NBA = {
-  'scheduleLeagueV2.json': { leagueSchedule: { gameDates: [
-    { games: [{ gameId: '0022600100', gameDateEst: `${today}T00:00:00Z`, gameDateTimeUTC: `${today}T23:30:00Z`, homeTeam: { teamTricode: 'BOS' }, awayTeam: { teamTricode: 'DEN' } }] },
-    { games: [{ gameId: '0022600101', gameDateEst: `${addDays(today, 1)}T00:00:00Z`, homeTeam: { teamTricode: 'LAL' }, awayTeam: { teamTricode: 'PHX' } }] },
+// ESPN-shaped fixtures (shapes captured from the live API)
+const espnEvent = (id, date, home, away, extra = {}) => ({ id, date, season: { type: 2 }, competitions: [{ competitors: [
+  { homeAway: 'home', team: { abbreviation: home }, score: extra.hs }, { homeAway: 'away', team: { abbreviation: away }, score: extra.as }],
+  status: extra.status || { type: { state: 'pre', shortDetail: '7:30 PM' } } }] });
+const boxRow = (name, s) => ({ athlete: { displayName: name }, starter: true, stats: s });
+const KEYS = ['minutes', 'points', 'fieldGoalsMade-fieldGoalsAttempted', 'threePointFieldGoalsMade-threePointFieldGoalsAttempted', 'freeThrowsMade-freeThrowsAttempted', 'rebounds', 'assists', 'turnovers', 'steals', 'blocks', 'offensiveRebounds', 'defensiveRebounds', 'fouls', 'plusMinus'];
+const ESPN = {
+  schedule: team => ({ events: team === 'bos' ? [espnEvent('g1', `${today}T23:30Z`, 'BOS', 'DEN')]
+    : team === 'lal' ? [espnEvent('g2', `${addDays(today, 1)}T23:30Z`, 'LAL', 'PHX')] : [] }),
+  scoreboard: { events: [espnEvent('g1', `${today}T23:30Z`, 'BOS', 'DEN', { hs: '80', as: '77', status: { period: 3, displayClock: '4:12', type: { state: 'in', shortDetail: '4:12 - 3rd' } } })] },
+  summary: { boxscore: { players: [
+    { team: { abbreviation: 'BOS' }, statistics: [{ keys: KEYS, athletes: [boxRow('Jayson Tatum', ['28', '21', '8-15', '3-7', '2-2', '7', '4', '2', '1', '0', '1', '6', '2', '+5']), boxRow('Benchwarmer', [])] }] },
+    { team: { abbreviation: 'DEN' }, statistics: [{ keys: KEYS, athletes: [boxRow('Nikola Jokic', ['30', '25', '10-16', '1-3', '4-5', '12', '9', '3', '2', '1', '3', '9', '3', '-5'])] }] },
   ] } },
-  'todaysScoreboard_00.json': { scoreboard: { gameDate: today, games: [{ gameId: '0022600100', gameStatus: 2, gameStatusText: 'Q3 4:12', period: 3, gameClock: 'PT04M12.00S', homeTeam: { teamTricode: 'BOS', score: 80 }, awayTeam: { teamTricode: 'DEN', score: 77 } }] } },
-  'boxscore_0022600100.json': { game: {
-    homeTeam: { teamTricode: 'BOS', players: [{ name: 'Jayson Tatum', oncourt: '1', played: '1', statistics: { minutes: 'PT28M10.00S', points: 21, reboundsTotal: 7, assists: 4, steals: 1, blocks: 0, threePointersMade: 3, fieldGoalsMade: 8, fieldGoalsAttempted: 15, freeThrowsMade: 2, freeThrowsAttempted: 2, turnovers: 2 } }] },
-    awayTeam: { teamTricode: 'DEN', players: [{ name: 'Nikola Jokic', oncourt: '0', played: '1', statistics: { minutes: 'PT30M00.00S', points: 25, reboundsTotal: 12, assists: 9, steals: 2, blocks: 1, threePointersMade: 1, fieldGoalsMade: 10, fieldGoalsAttempted: 16, freeThrowsMade: 4, freeThrowsAttempted: 5, turnovers: 3 } }] },
-  } },
 };
 
 let server, base, realFetch;
@@ -102,8 +106,13 @@ before(async () => {
       if (FIX[path]) return json(FIX[path]);
       return new Response(`no fixture: ${path}`, { status: 400 });
     }
-    const file = url.split('/').pop();
-    if (NBA[file]) return json(NBA[file]);
+    if (url.includes('site.api.espn.com')) {
+      const u = new URL(url);
+      const team = /\/teams\/(\w+)\/schedule/.exec(u.pathname)?.[1];
+      if (team) return json(ESPN.schedule(team));
+      if (u.pathname.endsWith('/scoreboard')) return json(ESPN.scoreboard);
+      if (u.pathname.endsWith('/summary') && u.searchParams.get('event') === 'g1') return json(ESPN.summary);
+    }
     return new Response('nope', { status: 404 });
   };
   server = app.listen(0);
@@ -148,7 +157,8 @@ test('game night merges Yahoo + live box scores', async () => {
   assert.equal(to.leader, 'opp'); // fewer turnovers wins
   const tatum = d.players.me.find(p => p.name === 'Jayson Tatum');
   assert.equal(tatum.live.pts, 21);
-  assert.equal(tatum.live.onCourt, true);
+  assert.equal(tatum.live.fga, 15);
+  assert.equal(tatum.game.statusText, '4:12 - 3rd');
   assert.equal(pts.tonightMe, 21);           // bench guy's game doesn't count
   const jokic = d.players.opp.find(p => p.key === 'o1');
   assert.equal(jokic.live.pts, 25);          // accent-insensitive match

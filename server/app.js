@@ -29,7 +29,7 @@ app.get('/api/auth/callback', wrap(handleCallback));
 app.get('/api/auth/status', wrap(req => ({ authed: isAuthed(req) })));
 app.post('/api/auth/logout', wrap(logout));
 
-// ── Health (public): confirms the NBA feeds are reachable from this host ────
+// ── Health (public): confirms the live-data feeds are reachable from this host ─
 app.get('/api/health', wrap(async () => {
   const check = async fn => { try { return { ok: true, info: await fn() }; } catch (e) { return { ok: false, error: e.message }; } };
   return {
@@ -38,33 +38,6 @@ app.get('/api/health', wrap(async () => {
     nbaSchedule: await check(async () => `${(await getSchedule()).length} games`),
     nbaScoreboard: await check(async () => { const s = await getScoreboard(); return `${s.date}: ${s.games.length} games`; }),
   };
-}));
-
-// TEMP probe: ESPN response shapes
-app.get('/api/probe', wrap(async () => {
-  const UA = { 'User-Agent': 'Mozilla/5.0 HoopIntel' };
-  const j = async url => { const r = await fetch(url, { headers: UA }); return { status: r.status, body: r.ok ? await r.json() : (await r.text()).slice(0, 200) }; };
-  const B = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
-  const sb = await j(`${B}/scoreboard`);
-  const ev = sb.body.events?.[0];
-  const out = { scoreboardDay: sb.body.day, eventCount: sb.body.events?.length, event: ev && { ...ev, competitions: [{ ...ev.competitions[0], competitors: ev.competitions[0].competitors.map(c => ({ homeAway: c.homeAway, score: c.score, team: { abbreviation: c.team.abbreviation, id: c.team.id } })), broadcasts: undefined, headlines: undefined, venue: undefined, geoBroadcasts: undefined, tickets: undefined, odds: undefined }], links: undefined, weather: undefined } };
-  for (const q of ['dates=20261020-20261026', 'dates=20261021', 'dates=20261020-20261026&limit=200', 'dates=20261020-20261026&seasontype=2']) {
-    const r = await j(`${B}/scoreboard?${q}`);
-    out[`range:${q}`] = { status: r.status, events: r.body.events?.length, first: r.body.events?.[0]?.date, last: r.body.events?.at(-1)?.date };
-  }
-  const ts = await j(`${B}/teams/bos/schedule?seasontype=2`);
-  out.teamSchedule = { status: ts.status, n: ts.body.events?.length, first: ts.body.events?.[0] && { id: ts.body.events[0].id, date: ts.body.events[0].date, seasonType: ts.body.events[0].seasonType, comps: ts.body.events[0].competitions?.[0]?.competitors?.map(c => c.team?.abbreviation) } };
-  const teams = await j(`${B}/teams`);
-  out.teamAbbrs = teams.body.sports?.[0]?.leagues?.[0]?.teams?.map(t => t.team.abbreviation);
-  // box score: find a finished game last season-ish
-  const done = await j(`${B}/scoreboard?dates=20260320`);
-  const gid = done.body.events?.[0]?.id;
-  if (gid) {
-    const sum = await j(`${B}/summary?event=${gid}`);
-    const bp = sum.body.boxscore?.players?.[0];
-    out.box = { gid, status: sum.status, team: bp?.team?.abbreviation, statsKeys: bp?.statistics?.[0]?.keys, labels: bp?.statistics?.[0]?.labels, athlete0: bp?.statistics?.[0]?.athletes?.[0] && { ...bp.statistics[0].athletes[0], athlete: { displayName: bp.statistics[0].athletes[0].athlete?.displayName, id: bp.statistics[0].athletes[0].athlete?.id } } };
-  }
-  return out;
 }));
 
 // ── Yahoo passthroughs (raw Yahoo JSON, parsed by the pages) ────────────────
