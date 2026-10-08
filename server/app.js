@@ -40,6 +40,28 @@ app.get('/api/health', wrap(async () => {
   };
 }));
 
+// TEMP probe: which live-data sources can this host reach?
+app.get('/api/probe', wrap(async () => {
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+  const targets = {
+    nbaNoHeaders: ['https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json', {}],
+    nbaUaOnly: ['https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json', { 'User-Agent': UA }],
+    nbaBrowser: ['https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json', { 'User-Agent': UA, Accept: 'application/json, text/plain, */*', 'Accept-Language': 'en-US,en;q=0.9', Referer: 'https://www.nba.com/' }],
+    espnScoreboard: ['https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard', { 'User-Agent': UA }],
+    espnRange: ['https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20261020-20261031&limit=300', { 'User-Agent': UA }],
+    espnSchedule: ['https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/bos/schedule?season=2027', { 'User-Agent': UA }],
+  };
+  const out = {};
+  for (const [k, [url, headers]] of Object.entries(targets)) {
+    try {
+      const r = await fetch(url, { headers });
+      const t = await r.text();
+      out[k] = { status: r.status, bytes: t.length, sample: t.slice(0, 160) };
+    } catch (e) { out[k] = { error: e.message }; }
+  }
+  return out;
+}));
+
 // ── Yahoo passthroughs (raw Yahoo JSON, parsed by the pages) ────────────────
 app.get('/api/leagues', wrap((req, res) => yget(req, res, 'users;use_login=1/games;game_keys=nba/leagues/teams')));
 app.get('/api/context', wrap(async (req, res) => { const ctx = await myContext(req, res); delete ctx.raw; return ctx; }));
