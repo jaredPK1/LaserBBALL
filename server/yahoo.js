@@ -17,6 +17,13 @@ export function redirectUri(req) {
   return `${proto}://${host}/api/auth/callback`;
 }
 
+// Short fingerprint of the Yahoo app a token was issued to, so sessions from a
+// deleted/replaced app are discarded instead of producing confusing 403s
+export function clientTag() {
+  const id = process.env.YAHOO_CLIENT_ID?.trim() || '';
+  return crypto.createHash('sha256').update(id).digest('hex').slice(0, 8);
+}
+
 function clientCreds() {
   const id = process.env.YAHOO_CLIENT_ID?.trim();
   const secret = process.env.YAHOO_CLIENT_SECRET?.trim();
@@ -59,6 +66,8 @@ async function tokenRequest(req, body) {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: Date.now() + (data.expires_in || 3600) * 1000 - 60_000,
+    client: clientTag(),
+    scope: data.scope || null,
   };
 }
 
@@ -69,7 +78,7 @@ export async function handleCallback(req, res) {
     return res.status(400).send('OAuth state mismatch — start again from the Connect page.');
   }
   const tokens = await tokenRequest(req, { grant_type: 'authorization_code', code: String(code) });
-  saveSession(req, res, tokens);
+  saveSession(req, res, { ...tokens, login_at: Date.now() });
   setCookie(req, res, 'hi_state', '', 0);
   res.redirect('/');
 }
@@ -79,17 +88,22 @@ export function logout(req, res) {
   res.json({ ok: true });
 }
 
+function currentSession(req) {
+  const s = loadSession(req);
+  return s?.refresh_token && s.client === clientTag() ? s : null;
+}
+
 export function isAuthed(req) {
-  return !!loadSession(req)?.refresh_token;
+  return !!currentSession(req);
 }
 
 async function accessToken(req, res, force = false) {
-  const s = loadSession(req);
-  if (!s?.refresh_token) throw new AuthError('Not connected to Yahoo');
+  const s = currentSession(req);
+  if (!s) throw new AuthError('Not connected to Yahoo');
   if (!force && s.access_token && Date.now() < s.expires_at) return s.access_token;
   try {
     const t = await tokenRequest(req, { grant_type: 'refresh_token', refresh_token: s.refresh_token });
-    const next = { ...t, refresh_token: t.refresh_token || s.refresh_token };
+    const next = { ...t, refresh_token: t.refresh_token || s.refresh_token, login_at: s.login_at, scope: t.scope || s.scope };
     saveSession(req, res, next);
     return next.access_token;
   } catch (e) {
@@ -200,4 +214,41 @@ export async function myContext(req, res) {
     teamName: mine?.name || 'My Team',
     raw: data,
   };
+}
+
+// Diagnostics for authorization problems: session facts + which calls Yahoo refuses.
+// Returns statuses and Yahoo's error text only — never tokens.
+export async function debugYahoo(req, res) {
+  const raw = loadSession(req);
+  const out = {
+    session: raw ? {
+      loginAt: raw.login_at ? new Date(raw.login_at).toISOString() : 'unknown (logged in before this build)',
+      fromCurrentApp: raw.client === clientTag(),
+      scope: raw.scope,
+    } : null,
+    calls: {},
+  };
+  if (!currentSession(req)) return out;
+  const league = process.env.LEAGUE_ID || '';
+  const paths = [
+    'game/nba',
+    'users;use_login=1',
+    'users;use_login=1/games',
+    'users;use_login=1/games;game_keys=nba/leagues',
+    'users;use_login=1/games;game_keys=nba/leagues/teams',
+    ...(league ? [`league/nba.l.${league}`] : []),
+  ];
+  for (const p of paths) {
+    try {
+      const token = await accessToken(req, res);
+      const r = await fetch(`${API}${p}?format=json`, { headers: { Authorization: `Bearer ${token}` } });
+      const text = await r.text();
+      let desc = '';
+      try { desc = JSON.parse(text).error?.description || ''; } catch { desc = text.slice(0, 120); }
+      out.calls[p] = { status: r.status, ...(r.ok ? {} : { error: desc }), www: r.headers.get('www-authenticate') || undefined };
+    } catch (e) {
+      out.calls[p] = { error: e.message };
+    }
+  }
+  return out;
 }

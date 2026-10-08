@@ -1,6 +1,6 @@
 // Hoop Intel API. Runs as a Vercel function (api/index.js) and locally (server/dev.js).
 import express from 'express';
-import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext } from './yahoo.js';
+import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo } from './yahoo.js';
 import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } from './nba.js';
 import { gameNight } from './gamenight.js';
 import { draftPool } from './draft.js';
@@ -28,6 +28,7 @@ app.get('/api/auth', wrap(authRedirect));
 app.get('/api/auth/callback', wrap(handleCallback));
 app.get('/api/auth/status', wrap(req => ({ authed: isAuthed(req) })));
 app.post('/api/auth/logout', wrap(logout));
+app.get('/api/debug/yahoo', wrap(debugYahoo));
 
 // ── Health (public): confirms the live-data feeds are reachable from this host ─
 app.get('/api/health', wrap(async () => {

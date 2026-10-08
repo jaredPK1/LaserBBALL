@@ -120,7 +120,8 @@ before(async () => {
 });
 after(() => { server.close(); globalThis.fetch = realFetch; });
 
-const cookie = `hi_sess=${seal({ access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3e6 })}`;
+const { clientTag } = await import('../server/yahoo.js');
+const cookie = `hi_sess=${seal({ access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3e6, client: clientTag() })}`;
 const get = (p, auth = true) => realFetch(`${base}${p}`, { headers: auth ? { cookie } : {}, redirect: 'manual' });
 
 test('auth status + redirect + 401 when not connected', async () => {
@@ -137,7 +138,7 @@ test('auth status + redirect + 401 when not connected', async () => {
 });
 
 test('expired access token is refreshed and re-sealed', async () => {
-  const stale = `hi_sess=${seal({ access_token: 'old', refresh_token: 'RT', expires_at: 0 })}`;
+  const stale = `hi_sess=${seal({ access_token: 'old', refresh_token: 'RT', expires_at: 0, client: clientTag() })}`;
   const r = await realFetch(`${base}/api/context`, { headers: { cookie: stale } });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('set-cookie'), /hi_sess=/);
@@ -208,4 +209,14 @@ test('history walks the renewal chain and parses a past season', async () => {
   assert.equal(s.weeks[1].matchups[0].isPlayoffs, true);
 
   assert.equal((await get('/api/history/season/bad;key')).status, 400);
+});
+
+test('sessions from a different Yahoo app are treated as logged out', async () => {
+  const other = `hi_sess=${seal({ access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3e6, client: 'deadbeef' })}`;
+  const r = await realFetch(`${base}/api/auth/status`, { headers: { cookie: other } });
+  assert.deepEqual(await r.json(), { authed: false });
+  const d = await (await realFetch(`${base}/api/debug/yahoo`, { headers: { cookie: other } })).json();
+  assert.equal(d.session.fromCurrentApp, false);
+  const ok = await (await get('/api/debug/yahoo')).json();
+  assert.equal(ok.calls['users;use_login=1/games;game_keys=nba/leagues/teams'].status, 200);
 });
