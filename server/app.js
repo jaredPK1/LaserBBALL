@@ -45,6 +45,29 @@ app.get('/api/health', wrap(async () => {
   };
 }));
 
+// TEMP probe: ESPN fantasy projections reachability/shape
+app.get('/api/probe', wrap(async () => {
+  const out = {};
+  const filter = { players: { limit: 3, sortDraftRanks: { sortPriority: 100, sortAsc: true, value: 'STANDARD' } } };
+  for (const season of [2027]) {
+    for (const host of ['lm-api-reads.fantasy.espn.com', 'fantasy.espn.com']) {
+      const url = `https://${host}/apis/v3/games/fba/seasons/${season}/segments/0/leaguedefaults/1?view=kona_player_info`;
+      try {
+        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json', 'X-Fantasy-Filter': JSON.stringify(filter) } });
+        const t = await r.text();
+        let body = t.slice(0, 300);
+        try {
+          const j = JSON.parse(t);
+          const p = j.players?.[0];
+          body = { n: j.players?.length, keys: Object.keys(j), first: p && { ...p, player: { ...p.player, stats: (p.player.stats || []).map(s => ({ id: s.id, seasonId: s.seasonId, statSourceId: s.statSourceId, statSplitTypeId: s.statSplitTypeId, appliedTotal: s.appliedTotal, averageStats: s.averageStats, stats: s.stats })) } } };
+        } catch { /* text */ }
+        out[`${host}:${season}`] = { status: r.status, body };
+      } catch (e) { out[`${host}:${season}`] = { error: e.message }; }
+    }
+  }
+  return out;
+}));
+
 // ── Yahoo passthroughs (raw Yahoo JSON, parsed by the pages) ────────────────
 app.get('/api/leagues', wrap((req, res) => yget(req, res, 'users;use_login=1/games;game_keys=nba/leagues/teams')));
 app.get('/api/context', wrap(async (req, res) => { const ctx = await myContext(req, res); delete ctx.raw; return ctx; }));
