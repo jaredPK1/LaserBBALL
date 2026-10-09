@@ -6,6 +6,7 @@ import { gameNight } from './gamenight.js';
 import { draftPool } from './draft.js';
 import { espnDraftPool, loadPool } from './espn.js';
 import { evaluateStrategy, STRATEGIES } from '../src/draft/sim.js';
+import '../src/draft/laser.js';
 import { historySeasons, historySeason } from './history.js';
 
 const app = express();
@@ -151,6 +152,9 @@ app.get('/api/draft/sim', wrap(async req => {
   const engine = {
     toWeight: req.query.to != null ? Number(req.query.to) : 1,
     need: { mode: req.query.mode || 'linear', sigma: Number(req.query.sigma) || 4 },
+    laserCandidates: Number(req.query.lc) || undefined,
+    laserRollouts: Number(req.query.lr) || undefined,
+    laserWeeks: Number(req.query.lw) || undefined,
   };
   const results = keys.map(k => {
     const r = evaluateStrategy(players, { strategyKey: k, mySlot: slot, runs, seed: Number(req.query.seed) || 1, engine });

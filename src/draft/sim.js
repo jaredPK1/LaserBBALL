@@ -20,7 +20,13 @@ export const STRATEGIES = {
   puntPTS: { label: 'Punt PTS', punt: ['pts'] },
   puntFTTO: { label: 'Punt FT% + TO (bigs)', punt: ['ft', 'to'] },
   adp: { label: 'Draft by ADP (like the bots)', punt: [], byAdp: true },
+  laser: { label: 'LASER (balanced base)', punt: [], laser: true },
+  laserFT: { label: 'LASER (punt-FT% base)', punt: ['ft'], laser: true },
 };
+
+// LASER is imported lazily to avoid a circular import at module load
+let laserRankFn = null;
+export function setLaser(fn) { laserRankFn = fn; }
 
 // toWeight < 1 tempers turnovers, which otherwise reward low-usage players
 export const weightsFor = (punt, toWeight = 1) =>
@@ -45,11 +51,19 @@ export function simulateDraft(pool, { teams = 10, rounds = 13, mySlot, strategy,
   const available = new Set(valued);
   const rosters = Array.from({ length: teams }, () => []);
   const myPicks = picksForSlot(mySlot, teams, rounds);
+  const order = [];
   for (let pick = 1; pick <= teams * rounds; pick++) {
     const { team } = teamOnClock(pick, teams);
     const avail = [...available];
     let p;
-    if (team === mySlot && !strategy.byAdp) {
+    if (team === mySlot && strategy.laser && laserRankFn) {
+      const ranked = laserRankFn({
+        valued, pickedKeys: order, teams, rounds, slot: mySlot, weights, needOpts: engine.need,
+        candidates: engine.laserCandidates || 5, rollouts: engine.laserRollouts || 8, weeks: engine.laserWeeks || 10,
+        seed: seed + pick,
+      });
+      p = avail.find(x => x.key === ranked[0].key);
+    } else if (team === mySlot && !strategy.byAdp) {
       const left = myPicks.filter(n => n >= pick).length;
       const recs = recommend(avail.filter(x => x.z), rosters[team - 1], weights, left, engine.need);
       p = recs.sort((a, b) => b.fit - a.fit)[0];
@@ -59,6 +73,7 @@ export function simulateDraft(pool, { teams = 10, rounds = 13, mySlot, strategy,
     }
     available.delete(p);
     rosters[team - 1].push(p);
+    order.push(p.key);
   }
   return rosters;
 }
