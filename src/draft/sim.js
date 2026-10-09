@@ -22,7 +22,9 @@ export const STRATEGIES = {
   adp: { label: 'Draft by ADP (like the bots)', punt: [], byAdp: true },
 };
 
-export const weightsFor = punt => Object.fromEntries(CATS.map(c => [c.k, punt.includes(c.k) ? 0 : 1]));
+// toWeight < 1 tempers turnovers, which otherwise reward low-usage players
+export const weightsFor = (punt, toWeight = 1) =>
+  Object.fromEntries(CATS.map(c => [c.k, punt.includes(c.k) ? 0 : c.k === 'to' ? toWeight : 1]));
 
 // Bot: best available by market rank (ADP order) plus noise that grows deeper in the draft
 export function botPick(available, rand) {
@@ -36,9 +38,9 @@ export function botPick(available, rand) {
 }
 
 // Draft one league. strategy: {punt, byAdp}; mySlot 1..teams. `pick` overrides for interactive mocks.
-export function simulateDraft(pool, { teams = 10, rounds = 13, mySlot, strategy, seed = 1 }) {
+export function simulateDraft(pool, { teams = 10, rounds = 13, mySlot, strategy, seed = 1, engine = {} }) {
   const rand = rng(seed);
-  const weights = weightsFor(strategy.punt || []);
+  const weights = weightsFor(strategy.punt || [], engine.toWeight ?? 1);
   const valued = computeValues(pool, { teams, rounds, weights });
   const available = new Set(valued);
   const rosters = Array.from({ length: teams }, () => []);
@@ -49,7 +51,7 @@ export function simulateDraft(pool, { teams = 10, rounds = 13, mySlot, strategy,
     let p;
     if (team === mySlot && !strategy.byAdp) {
       const left = myPicks.filter(n => n >= pick).length;
-      const recs = recommend(avail.filter(x => x.z), rosters[team - 1], weights, left);
+      const recs = recommend(avail.filter(x => x.z), rosters[team - 1], weights, left, engine.need);
       p = recs.sort((a, b) => b.fit - a.fit)[0];
       p = avail.find(x => x.key === p.key);
     } else {
@@ -111,13 +113,13 @@ export function simulateSeason(rosters, { weeks = 20, seed = 7 } = {}) {
 // Rank of my team in all-play win% (1 = best)
 const rankOf = (season, i) => 1 + season.filter((s, j) => j !== i && s.winPct > season[i].winPct).length;
 
-export function evaluateStrategy(pool, { strategyKey, mySlot, runs = 20, teams = 10, rounds = 13, seed = 1 }) {
+export function evaluateStrategy(pool, { strategyKey, mySlot, runs = 20, teams = 10, rounds = 13, seed = 1, engine = {} }) {
   const strategy = STRATEGIES[strategyKey];
   let win = 0, rank = 0, top3 = 0;
   const cats = Object.fromEntries(CATS.map(c => [c.k, 0]));
   let sample = null;
   for (let i = 0; i < runs; i++) {
-    const rosters = simulateDraft(pool, { teams, rounds, mySlot, strategy, seed: seed * 1000 + i * 17 + mySlot });
+    const rosters = simulateDraft(pool, { teams, rounds, mySlot, strategy, seed: seed * 1000 + i * 17 + mySlot, engine });
     const season = simulateSeason(rosters, { seed: seed * 7 + i });
     const me = season[mySlot - 1];
     const r = rankOf(season, mySlot - 1);

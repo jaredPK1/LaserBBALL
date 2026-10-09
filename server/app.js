@@ -148,12 +148,16 @@ app.get('/api/draft/sim', wrap(async req => {
   const runs = Math.min(Number(req.query.runs) || 40, 120);
   const keys = String(req.query.strategies || Object.keys(STRATEGIES).join(',')).split(',').filter(k => STRATEGIES[k]);
   const { players } = await loadPool({ query: {} });
+  const engine = {
+    toWeight: req.query.to != null ? Number(req.query.to) : 1,
+    need: { mode: req.query.mode || 'linear', sigma: Number(req.query.sigma) || 4 },
+  };
   const results = keys.map(k => {
-    const r = evaluateStrategy(players, { strategyKey: k, mySlot: slot, runs, seed: Number(req.query.seed) || 1 });
+    const r = evaluateStrategy(players, { strategyKey: k, mySlot: slot, runs, seed: Number(req.query.seed) || 1, engine });
     if (!req.query.sample) delete r.sample;
     return r;
   });
-  return { slot, runs, results: results.sort((a, b) => b.winPct - a.winPct) };
+  return { slot, runs, engine, results: results.sort((a, b) => b.winPct - a.winPct) };
 }));
 app.get('/api/history/seasons', wrap(historySeasons));
 app.get('/api/history/season/:leagueKey', wrap(historySeason));

@@ -146,17 +146,27 @@ export function teamProfile(myPlayers) {
 
 // Weak categories get more weight, stacked ones less (H2H only needs 5 of 9).
 // Punted categories (weight 0) stay at 0.
-export function needWeights(myPlayers, weights) {
+// How much each category should count for the next pick.
+//  mode 'linear' (legacy): mild boost for weak cats, mild cut for strong ones.
+//  mode 'h2h': weight by how much a pick moves your chance of WINNING the category.
+//    Projected end-of-draft surplus in z units is compared to a typical opponent;
+//    categories you'll win anyway (or can't win) count less — surplus is wasted in H2H.
+export function needWeights(myPlayers, weights, { mode = 'linear', sigma = 4, rosterSize = 13 } = {}) {
   const { n, avg } = teamProfile(myPlayers);
   return Object.fromEntries(CATS.map(c => {
     const w = weights[c.k] ?? 1;
     if (w === 0 || n < 2) return [c.k, w];
+    if (mode === 'h2h') {
+      const confidence = Math.min(1, n / 6);
+      const projected = avg[c.k] * rosterSize * confidence;
+      return [c.k, w * Math.max(0.15, Math.exp(-(projected ** 2) / (2 * sigma ** 2)))];
+    }
     return [c.k, w * Math.min(1.5, Math.max(0.6, 1 - 0.3 * avg[c.k]))];
   }));
 }
 
-export function recommend(available, myPlayers, weights, picksLeft) {
-  const nw = needWeights(myPlayers, weights);
+export function recommend(available, myPlayers, weights, picksLeft, needOpts) {
+  const nw = needWeights(myPlayers, weights, needOpts);
   const base = slotFill(myPlayers);
   const scarce = picksLeft <= base.open.length + 2;
   return available.map(p => {
