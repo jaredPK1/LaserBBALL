@@ -70,3 +70,12 @@ test('CSV import matches names and adds unknowns', () => {
   const flagg = r.players.find(p => p.name === 'Cooper Flagg');
   assert.deepEqual(flagg.pos, ['SF', 'PF']);
 });
+
+test('durability: a player projected for fewer games is worth less', () => {
+  const pool = Array.from({ length: 30 }, (_, i) => mk(`p${i + 1}`, ['SG'], { gp: 75 }));
+  pool.push(mk('p31', ['SF'], { pts: 26, gp: 45 }), mk('p32', ['SF'], { pts: 26, gp: 76 }));
+  const v = computeValues(pool, { teams: 3, rounds: 10 });
+  assert.ok(v.find(p => p.key === 'p32').value > v.find(p => p.key === 'p31').value + 0.5);
+  const off = computeValues(pool, { teams: 3, rounds: 10, durability: false });
+  assert.ok(Math.abs(off.find(p => p.key === 'p32').value - off.find(p => p.key === 'p31').value) < 1e-9);
+});

@@ -57,18 +57,33 @@ const total = (z, weights) => CATS.reduce((a, c) => a + (weights[c.k] ?? 1) * z[
 
 // Returns players sorted by value with { z, value, valueRank, tier }.
 // Players without stats (rookies, etc.) are kept at the bottom, ordered by Yahoo rank.
-export function computeValues(players, { teams = 10, rounds = 13, weights = DEFAULT_SETTINGS.weights } = {}) {
+// Share of games a player is expected to play. Missed games are lost weekly
+// volume in H2H, so per-game stats are scaled by this before valuing.
+export const FULL_SEASON_GP = 78;
+export function availability(p) {
+  if (!p.gp || p.gp <= 1) return 1; // unknown (e.g. CSV without GP)
+  return Math.min(1, Math.max(0.25, p.gp / FULL_SEASON_GP));
+}
+const COUNTING = ['fgm', 'fga', 'ftm', 'fta', 'tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'];
+
+export function computeValues(players, { teams = 10, rounds = 13, weights = DEFAULT_SETTINGS.weights, durability = true } = {}) {
   const withStats = players.filter(p => p.hasStats !== false && p.pts > 0);
   const without = players.filter(p => !(p.hasStats !== false && p.pts > 0));
   const draftable = Math.max(teams * rounds, 20);
 
-  // Two passes: reference pool = top-N by Yahoo rank, then top-N by our own value
-  let ref = [...withStats].sort((a, b) => (a.yahooRank ?? 999) - (b.yahooRank ?? 999)).slice(0, draftable);
-  let zs = zScores(withStats, ref);
+  // Value on expected weekly production (per-game × share of games played)
+  const eff = withStats.map(p => {
+    const a = durability ? availability(p) : 1;
+    return a === 1 ? p : { ...p, ...Object.fromEntries(COUNTING.map(k => [k, (p[k] || 0) * a])) };
+  });
+
+  // Two passes: reference pool = top-N by market rank, then top-N by our own value
+  let ref = [...eff].sort((a, b) => (a.yahooRank ?? 999) - (b.yahooRank ?? 999)).slice(0, draftable);
+  let zs = zScores(eff, ref);
   for (let pass = 0; pass < 2; pass++) {
-    const order = withStats.map((p, i) => ({ p, v: total(zs[i], weights) })).sort((a, b) => b.v - a.v);
+    const order = eff.map((p, i) => ({ p, v: total(zs[i], weights) })).sort((a, b) => b.v - a.v);
     ref = order.slice(0, draftable).map(o => o.p);
-    zs = zScores(withStats, ref);
+    zs = zScores(eff, ref);
   }
 
   const valued = withStats
