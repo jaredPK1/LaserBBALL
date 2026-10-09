@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getDraftPool, startAuth } from '../api/yahoo';
+import { getDraftPool, getEspnPool } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import {
   CATS, DEFAULT_SETTINGS, computeValues, teamOnClock, picksForSlot, slotFill,
@@ -102,6 +102,18 @@ export default function DraftBoard({ authed }) {
   const undo = () => update({ picks: picks.slice(0, -1) });
   const teamName = t => (t === slot ? 'You' : teamNames[t] || scoutFor(t)?.nickname || `Team ${t}`);
 
+  async function loadEspn() {
+    setBusy(true); setMsg(null);
+    try {
+      const { data } = await getEspnPool();
+      update({ pool: data.players, meta: { source: 'espn', season: data.season, at: data.fetchedAt } });
+      setMsg({ ok: true, text: `Loaded ${data.players.length} players from ESPN: ${data.withProjections} with ${data.season - 1}-${String(data.season).slice(2)} projections. ADP = ESPN average draft position.` });
+      setTab('board');
+    } catch (e) {
+      setMsg({ ok: false, text: e.response?.data?.error || e.message });
+    } finally { setBusy(false); }
+  }
+
   async function loadYahoo() {
     setBusy(true); setMsg(null);
     try {
@@ -193,14 +205,14 @@ export default function DraftBoard({ authed }) {
               <select className="input" value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ maxWidth: 170 }}>
                 <option value="fit">Sort: Best fit</option>
                 <option value="value">Sort: Raw value</option>
-                <option value="yahoo">Sort: Yahoo rank</option>
+                <option value="yahoo">Sort: ADP</option>
               </select>
             </div>
             <div className="table-wrap">
               <table className="draft-table">
                 <thead>
                   <tr>
-                    <th></th><th>#</th><th>Player</th><th title="Yahoo rank — a proxy for when others will draft him">Y!</th>
+                    <th></th><th>#</th><th>Player</th><th title="Market rank by average draft position: roughly when others will take him">ADP</th>
                     <th>Value</th><th>Fit</th>
                     {CATS.map(c => <th key={c.k} className={weights[c.k] === 0 ? 'punted' : ''}>{c.label}</th>)}
                   </tr>
@@ -300,24 +312,25 @@ export default function DraftBoard({ authed }) {
             {state.meta && (
               <p className="meta">
                 Current: {pool.length} players{state.meta.source === 'yahoo' && ` from Yahoo (${state.meta.league}, ${state.meta.season} stats, ${state.meta.statType})`}
+                {state.meta.source === 'espn' && ` from ESPN projections (loaded ${new Date(state.meta.at).toLocaleString()})`}
                 {state.meta.projections && ` + projections from ${state.meta.projections}`}
               </p>
             )}
             <div className="row-inline">
-              {authed ? (
+              <button className="btn btn-primary" onClick={loadEspn} disabled={busy}>{busy ? 'Loading…' : pool.length ? 'Reload ESPN projections' : 'Load ESPN projections'}</button>
+              {authed && (
                 <>
                   <label>Stats season <input className="input input-sm" type="number" value={season} onChange={e => setSeason(Number(e.target.value))} /></label>
-                  <button className="btn btn-primary" onClick={loadYahoo} disabled={busy}>{busy ? 'Loading… (≈20s)' : pool.length ? 'Reload from Yahoo' : 'Load players from Yahoo'}</button>
+                  <button className="btn btn-ghost" onClick={loadYahoo} disabled={busy}>Load from Yahoo</button>
                 </>
-              ) : (
-                <button className="btn btn-primary" onClick={startAuth}>Connect Yahoo to load players</button>
               )}
               <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>Import projections CSV</button>
               <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" hidden onChange={onCsv} />
             </div>
             <p className="meta">
-              Yahoo gives last season's stats, which miss role changes, trades and rookies. For better results, export
-              projections (Hashtag Basketball, Basketball Monster, etc.) as CSV with columns like Player, PTS, REB, AST, STL, BLK, 3PM, TO, FG%, FT% (FGA/FTA if available) and import them on top.
+              ESPN projections need no login and include rookies, injuries and average draft position. Yahoo's API is currently
+              gated behind Yahoo's approval program. Optional: import a CSV from another projection source (Hashtag Basketball,
+              Basketball Monster) on top. Columns like Player, PTS, REB, AST, STL, BLK, 3PM, TO, FG%, FT%, FGA, FTA.
             </p>
           </section>
 

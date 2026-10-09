@@ -101,3 +101,6 @@ export const getHistorySeasons = () =>
 
 export const getHistorySeason = (leagueKey) =>
   apiCall(() => axios.get(`${BASE}/history/season/${encodeURIComponent(leagueKey)}`, { timeout: 90000 }));
+
+export const getEspnPool = () =>
+  axios.get(`${BASE}/draft/espn`, { timeout: 60000 });

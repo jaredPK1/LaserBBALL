@@ -4,6 +4,7 @@ import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myCo
 import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } from './nba.js';
 import { gameNight } from './gamenight.js';
 import { draftPool } from './draft.js';
+import { espnDraftPool } from './espn.js';
 import { historySeasons, historySeason } from './history.js';
 
 const app = express();
@@ -43,29 +44,6 @@ app.get('/api/health', wrap(async () => {
     nbaSchedule: await check(async () => `${(await getSchedule()).length} games`),
     nbaScoreboard: await check(async () => { const s = await getScoreboard(); return `${s.date}: ${s.games.length} games`; }),
   };
-}));
-
-// TEMP probe: ESPN fantasy projections reachability/shape
-app.get('/api/probe', wrap(async () => {
-  const out = {};
-  const filter = { players: { limit: 3, sortDraftRanks: { sortPriority: 100, sortAsc: true, value: 'STANDARD' } } };
-  for (const season of [2027]) {
-    for (const host of ['lm-api-reads.fantasy.espn.com', 'fantasy.espn.com']) {
-      const url = `https://${host}/apis/v3/games/fba/seasons/${season}/segments/0/leaguedefaults/1?view=kona_player_info`;
-      try {
-        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json', 'X-Fantasy-Filter': JSON.stringify(filter) } });
-        const t = await r.text();
-        let body = t.slice(0, 300);
-        try {
-          const j = JSON.parse(t);
-          const p = j.players?.[0];
-          body = { n: j.players?.length, keys: Object.keys(j), first: p && { ...p, player: { ...p.player, stats: (p.player.stats || []).map(s => ({ id: s.id, seasonId: s.seasonId, statSourceId: s.statSourceId, statSplitTypeId: s.statSplitTypeId, appliedTotal: s.appliedTotal, averageStats: s.averageStats, stats: s.stats })) } } };
-        } catch { /* text */ }
-        out[`${host}:${season}`] = { status: r.status, body };
-      } catch (e) { out[`${host}:${season}`] = { error: e.message }; }
-    }
-  }
-  return out;
 }));
 
 // ── Yahoo passthroughs (raw Yahoo JSON, parsed by the pages) ────────────────
@@ -162,6 +140,7 @@ app.get('/api/schedule/weekly', wrap(async (req, res) => {
 app.get('/api/nba/scoreboard', wrap(() => getScoreboard()));
 app.get('/api/gamenight', wrap(gameNight));
 app.get('/api/draft/pool', wrap(draftPool));
+app.get('/api/draft/espn', wrap(espnDraftPool));
 app.get('/api/history/seasons', wrap(historySeasons));
 app.get('/api/history/season/:leagueKey', wrap(historySeason));
 
