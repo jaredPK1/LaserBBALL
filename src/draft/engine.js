@@ -159,6 +159,8 @@ export function needWeights(myPlayers, weights, { mode = 'linear', sigma = 4, ro
     if (mode === 'h2h') {
       const confidence = Math.min(1, n / 6);
       const projected = avg[c.k] * rosterSize * confidence;
+      // Behind: worth more (fixable in a draft). Ahead: diminishing returns.
+      if (projected <= 0) return [c.k, w * (1 + Math.min(0.75, -projected / (2 * sigma)))];
       return [c.k, w * Math.max(0.15, Math.exp(-(projected ** 2) / (2 * sigma ** 2)))];
     }
     return [c.k, w * Math.min(1.5, Math.max(0.6, 1 - 0.3 * avg[c.k]))];
