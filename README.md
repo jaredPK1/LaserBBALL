@@ -39,3 +39,23 @@ npm test               # engine + API tests (Yahoo/NBA mocked)
 1. Before the draft: open **Draft Board → Setup**, pick your slot, click **Load players from Yahoo**, and optionally import a projections CSV.
 2. During the draft: hit **Draft** on each player as they're taken. The board assigns each pick to whoever is on the clock, and **Undo** fixes mistakes.
 3. The board lives in that browser's storage, so run the draft from one device.
+
+## The LASER algorithm
+
+**L**ookahead **S**imulation for **E**xpected **R**esults: the ⚡ button on the Draft Board when you're on the clock.
+
+Most draft tools rank players with a proxy formula (a sum of category z-scores) and hope it lines up with winning. In H2H categories it often doesn't. It overpays for categories you'd win anyway and ignores who'll still be there at your next pick. LASER ranks players by the actual goal:
+
+1. Take the board's top 8 candidates for this pick.
+2. For each one, play out the **rest of the draft** 24 times. Leaguemates draft by ADP with realistic randomness, and you keep drafting with the board's fit policy.
+3. Play out a **season of weekly H2H matchups** for each finished league. Weekly stats vary with 3-4 game weeks, missed games from projected availability, and form.
+4. Rank candidates by **simulated share of matchups won**. Every candidate faces the *same* random draws (common random numbers), so the comparison measures the player, not the luck. It reports a paired edge with a standard error and says "too close to call" when it is.
+
+This is *rollout* (Monte Carlo policy improvement, as used in game-playing AI) applied to a fantasy draft. One step of rollout can't do worse than the policy it rolls out, in expectation.
+
+**Backtest (simulated 10-team leagues vs. ADP-drafting opponents):** LASER beat the board's own picks in 7 of 7 batches (98 leagues), by +1.2 to +6.1 points of matchup win rate (mean ~+3). The best combination was LASER with a punt-FT% base: 77-80% matchup wins. These numbers come from inside the model. Real leagues are noisier and real leaguemates aren't ADP bots.
+
+The supporting pieces:
+- **Durability-weighted values.** Per-game stats × projected share of games played. In simulation this was worth ~20 points of matchup win rate over per-game z-scores, which draft injury-prone veterans.
+- **Strategy lab.** `/api/draft/sim?slot=N` runs every punt strategy from a draft slot.
+- **Mock drafts** against ADP bots, with a simulated-season grade.

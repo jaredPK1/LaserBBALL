@@ -375,3 +375,21 @@ tr:hover td {
 .clock-scout { flex-basis: 100%; color: var(--gold); order: 3; }
 .team-mgr { width: 100%; padding: 5px 8px; font-size: 12px; margin-bottom: 6px; }
 .scout-line { color: var(--gold); margin-bottom: 2px; }
+
+/* ── LASER ───────────────────────────────────────────── */
+.laser { margin-top: 10px; }
+.btn-laser {
+  background: linear-gradient(90deg, #ef4444, #f97316); color: #fff; font-weight: 700;
+  letter-spacing: 0.04em; box-shadow: 0 0 18px rgba(239, 68, 68, 0.35);
+}
+.laser-run { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.laser-bar { height: 6px; background: var(--surface2); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.laser-bar div { height: 100%; background: linear-gradient(90deg, #ef4444, #f97316); transition: width 0.2s; }
+.laser-results { background: var(--surface); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 8px; padding: 10px 12px; }
+.laser-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; width: 100%;
+  background: none; border: none; border-bottom: 1px solid var(--border); color: var(--text);
+  padding: 8px 2px; cursor: pointer; font: inherit; text-align: left;
+}
+.laser-row.best { color: #fca5a5; font-weight: 600; }
+.laser-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

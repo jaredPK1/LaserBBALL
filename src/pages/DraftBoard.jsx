@@ -129,6 +129,30 @@ export default function DraftBoard({ authed }) {
     return { ...me, rank };
   }, [state.mock, done, slot, teams, rosters, picks.length]);
 
+  // LASER: simulate the rest of the draft + season for the top candidates
+  const [laser, setLaser] = useState(null);
+  const laserWorker = useRef(null);
+  function runLaser() {
+    if (!myTurn) return;
+    laserWorker.current?.terminate();
+    const w = new Worker(new URL('../draft/laser.worker.js', import.meta.url), { type: 'module' });
+    laserWorker.current = w;
+    const atPick = picks.length;
+    setLaser({ atPick, progress: 0 });
+    w.onmessage = ({ data }) => {
+      if (data.progress != null) setLaser(l => (l && l.atPick === atPick ? { ...l, progress: data.progress } : l));
+      if (data.results || data.error) {
+        setLaser(l => (l && l.atPick === atPick ? { ...l, progress: 1, results: data.results, error: data.error } : l));
+        w.terminate();
+      }
+    };
+    w.postMessage({
+      valued, pickedKeys: picks, teams, rounds, slot, weights,
+      candidates: 8, rollouts: 24, weeks: 12, seed: atPick + 1,
+    });
+  }
+  const laserNow = laser && laser.atPick === picks.length ? laser : null;
+
   function startMock() {
     if (!slot) { setMsg({ ok: false, text: 'Pick your draft slot first.' }); return; }
     if (!pool.length) { setMsg({ ok: false, text: 'Load ESPN projections first.' }); return; }
@@ -209,6 +233,38 @@ export default function DraftBoard({ authed }) {
           <button className="btn btn-ghost" onClick={undo} disabled={!picks.length}>Undo</button>
         </div>
       </div>
+
+      {myTurn && (
+        <div className="laser">
+          {!laserNow ? (
+            <button className="btn btn-laser" onClick={runLaser}>⚡ LASER pick</button>
+          ) : !laserNow.results ? (
+            <div className="laser-run">
+              <div className="meta">LASER: simulating the rest of the draft + season for 8 candidates × 24 rollouts…</div>
+              <div className="laser-bar"><div style={{ width: `${Math.round((laserNow.progress || 0) * 100)}%` }} /></div>
+            </div>
+          ) : laserNow.error ? (
+            <div className="notice err">LASER failed: {laserNow.error}</div>
+          ) : (
+            <div className="laser-results">
+              <div className="recs-label">⚡ LASER: simulated H2H win rate if you take…</div>
+              {laserNow.results.map((r, i) => (
+                <button key={r.key} className={`laser-row ${i === 0 ? 'best' : ''}`} onClick={() => draft(r.key)}>
+                  <span className="laser-name">{r.name} <span className="meta">{(r.pos || []).join('/')}</span></span>
+                  <span className="stat">{(r.winPct * 100).toFixed(1)}%</span>
+                  <span className="meta">±{(r.se * 100).toFixed(1)}</span>
+                </button>
+              ))}
+              {laserNow.results[0]?.edge && (
+                <div className="meta" style={{ marginTop: 6 }}>
+                  Edge over {laserNow.results[0].edge.vs}: {(laserNow.results[0].edge.mean * 100).toFixed(1)} pts
+                  (±{(laserNow.results[0].edge.se * 100).toFixed(1)}, paired). {laserNow.results[0].edge.mean < 2 * laserNow.results[0].edge.se ? 'Too close to call: take either.' : 'Clear edge.'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {myTurn && topFit.length > 0 && (
         <div className="recs">
