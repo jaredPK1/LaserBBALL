@@ -61,6 +61,15 @@ export function parseEspnPlayers(json, teams, season) {
 }
 
 export async function espnDraftPool(req) {
+  const v = await loadPool(req);
+  if (req.query.summary) {
+    const { players, ...rest } = v;
+    return { ...rest, last: players.at(-1)?.name, noStats: players.filter(p => !p.hasStats).length };
+  }
+  return v;
+}
+
+async function loadPool(req) {
   const count = Math.min(Number(req.query.count) || 300, 500);
   const season = Number(req.query.season) || espnSeason();
   if (cache && cache.season === season && cache.count === count && Date.now() - cache.t < 3600_000) return cache.v;
