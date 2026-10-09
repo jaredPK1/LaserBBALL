@@ -6,6 +6,7 @@ import {
   recommend, teamProfile, importProjections,
 } from '../draft/engine';
 import { analyze, scoutingNotes } from '../history/analyze';
+import { botPick, rng, simulateSeason } from '../draft/sim';
 
 const STORE = 'hi_draft_v1';
 const POSITIONS = ['ALL', 'PG', 'SG', 'SF', 'PF', 'C'];
@@ -99,7 +100,43 @@ export default function DraftBoard({ authed }) {
   const topFit = useMemo(() => [...recs].filter(p => p.fit != null).sort((a, b) => b.fit - a.fit).slice(0, 3), [recs]);
 
   const draft = key => { if (!done) update({ picks: [...picks, key] }); };
-  const undo = () => update({ picks: picks.slice(0, -1) });
+  // In a mock, undo also rewinds the bots' picks back to your last pick
+  const undo = () => {
+    if (!state.mock || !slot) return update({ picks: picks.slice(0, -1) });
+    let i = picks.length - 1;
+    while (i >= 0 && teamOf(i) !== slot) i--;
+    update({ picks: picks.slice(0, Math.max(0, i)) });
+  };
+
+  // Mock draft: bots pick by ADP (with noise) whenever it isn't your turn
+  const mockRand = useRef(null);
+  useEffect(() => {
+    if (!state.mock || done || myTurn || !slot || !available.length) return;
+    const t = setTimeout(() => {
+      if (!mockRand.current) mockRand.current = rng(Date.now() % 2147483647);
+      const p = botPick(available, mockRand.current);
+      if (p) setState(s => ({ ...s, picks: [...s.picks, p.key] }));
+    }, 120);
+    return () => clearTimeout(t);
+  }, [state.mock, done, myTurn, slot, available]);
+
+  const mockResult = useMemo(() => {
+    if (!state.mock || !done || !slot) return null;
+    const teamRosters = Array.from({ length: teams }, (_, i) => rosters[i + 1].filter(p => p.z));
+    const season = simulateSeason(teamRosters, { weeks: 20, seed: picks.length * 31 + slot });
+    const me = season[slot - 1];
+    const rank = 1 + season.filter((x, i) => i !== slot - 1 && x.winPct > me.winPct).length;
+    return { ...me, rank };
+  }, [state.mock, done, slot, teams, rosters, picks.length]);
+
+  function startMock() {
+    if (!slot) { setMsg({ ok: false, text: 'Pick your draft slot first.' }); return; }
+    if (!pool.length) { setMsg({ ok: false, text: 'Load ESPN projections first.' }); return; }
+    mockRand.current = rng(Date.now() % 2147483647);
+    update({ picks: [], mock: true });
+    setMsg({ ok: true, text: 'Mock draft started. Bots draft by ADP with some randomness; you pick on your turn.' });
+    setTab('board');
+  }
   const teamName = t => (t === slot ? 'You' : teamNames[t] || scoutFor(t)?.nickname || `Team ${t}`);
 
   async function loadEspn() {
@@ -191,6 +228,23 @@ export default function DraftBoard({ authed }) {
       </div>
 
       {msg && <div className={`notice ${msg.ok ? 'ok' : 'err'}`}>{msg.text}</div>}
+
+      {state.mock && (
+        <div className="notice action" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <b>MOCK DRAFT</b>
+          {mockResult ? (
+            <span>
+              Simulated season: you'd win <b>{Math.round(mockResult.winPct * 100)}%</b> of matchups and finish
+              <b> #{mockResult.rank}</b> of {teams} in all-play. Categories won:{' '}
+              {CATS.map(c => `${c.label} ${Math.round(mockResult.cats[c.k] * 100)}%`).join(' · ')}
+            </span>
+          ) : <span>Bots are drafting; tap Draft when you're on the clock. Undo rewinds to your last pick.</span>}
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <button className="btn btn-primary btn-sm" onClick={startMock}>New mock</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => update({ mock: false, picks: [] })}>End mock</button>
+          </span>
+        </div>
+      )}
 
       {tab === 'board' && (
         pool.length === 0 ? (
@@ -332,6 +386,14 @@ export default function DraftBoard({ authed }) {
               gated behind Yahoo's approval program. Optional: import a CSV from another projection source (Hashtag Basketball,
               Basketball Monster) on top. Columns like Player, PTS, REB, AST, STL, BLK, 3PM, TO, FG%, FT%, FGA, FTA.
             </p>
+          </section>
+
+          <section>
+            <h3>Practice</h3>
+            <p className="meta">Run a full mock against 9 bots that draft by ADP, then see how your team does over a simulated 20-week season.</p>
+            <div className="row-inline">
+              <button className="btn btn-primary" onClick={startMock}>Start mock draft</button>
+            </div>
           </section>
 
           <section>
