@@ -163,7 +163,8 @@ export function recommend(available, myPlayers, weights, picksLeft) {
     if (!p.z) return { ...p, fit: null, fillsSlot: false };
     let fit = CATS.reduce((a, c) => a + nw[c.k] * p.z[c.k], 0);
     let fillsSlot = false;
-    if (base.open.length) {
+    // The slot check is costly and only changes the score when slots are scarce
+    if (base.open.length && scarce) {
       fillsSlot = slotFill([...myPlayers, p]).open.length < base.open.length;
       if (fillsSlot && scarce) fit += 1.0;
       if (!fillsSlot && scarce) fit -= 1.0;

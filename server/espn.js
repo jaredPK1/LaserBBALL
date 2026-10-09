@@ -69,7 +69,7 @@ export async function espnDraftPool(req) {
   return v;
 }
 
-async function loadPool(req) {
+export async function loadPool(req) {
   const count = Math.min(Number(req.query.count) || 300, 500);
   const season = Number(req.query.season) || espnSeason();
   if (cache && cache.season === season && cache.count === count && Date.now() - cache.t < 3600_000) return cache.v;
