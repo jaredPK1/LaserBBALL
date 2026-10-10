@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader';
 import {
   CATS, DEFAULT_SETTINGS, computeValues, teamOnClock, picksForSlot, slotFill,
   recommend, teamProfile, importProjections,
+  normName,
 } from '../draft/engine';
 import { analyze, scoutingNotes } from '../history/analyze';
 import { botPick, rng, simulateSeason } from '../draft/sim';
@@ -163,6 +164,30 @@ export default function DraftBoard({ authed }) {
   }
   const teamName = t => (t === slot ? 'You' : teamNames[t] || scoutFor(t)?.nickname || `Team ${t}`);
 
+  // Fix a past pick: tap it in the draft log, then choose the right player
+  const [fixIndex, setFixIndex] = useState(null);
+  const assign = key => {
+    if (fixIndex != null) {
+      if (picks.includes(key) && picks[fixIndex] !== key) return;
+      const next = picks.slice();
+      next[fixIndex] = key;
+      update({ picks: next });
+      setFixIndex(null);
+      return;
+    }
+    draft(key);
+  };
+
+  // Draft order editor helpers (names live in teamNames by slot number)
+  const moveSlot = (t, dir) => {
+    const u = t + dir;
+    if (u < 1 || u > teams) return;
+    const names = { ...teamNames, [t]: teamNames[u] || '', [u]: teamNames[t] || '' };
+    const patch = { teamNames: names };
+    if (slot === t) setSettings({ slot: u }); else if (slot === u) setSettings({ slot: t });
+    update(patch);
+  };
+
   async function loadEspn() {
     setBusy(true); setMsg(null);
     try {
@@ -233,6 +258,18 @@ export default function DraftBoard({ authed }) {
           <button className="btn btn-ghost" onClick={undo} disabled={!picks.length}>Undo</button>
         </div>
       </div>
+
+      {pool.length > 0 && (!done || fixIndex != null) && !(state.mock && !myTurn && fixIndex == null) && (
+        <QuickPick
+          title={fixIndex != null
+            ? <>Fix pick #{fixIndex + 1} ({teamName(teamOf(fixIndex))}), now: {byKey.get(picks[fixIndex])?.name}</>
+            : myTurn ? <>Your pick: tap who you take</> : <><b>{teamName(clock.team)}</b> is on the clock: who did they take?</>}
+          available={available}
+          onPick={assign}
+          onCancel={fixIndex != null ? () => setFixIndex(null) : null}
+          mine={myTurn && fixIndex == null}
+        />
+      )}
 
       {myTurn && (
         <div className="laser">
@@ -389,7 +426,12 @@ export default function DraftBoard({ authed }) {
           ))}
           <div className="team-card">
             <div className="team-title">Draft log</div>
-            {picks.map((k, i) => <div key={i} className="team-pick"><span className="stat">{i + 1}</span> {byKey.get(k)?.name || k} <span className="meta">→ {teamName(teamOf(i))}</span></div>).reverse()}
+            <div className="meta" style={{ marginBottom: 4 }}>Tap a pick to fix it</div>
+            {picks.map((k, i) => (
+              <button key={i} className={`team-pick log-pick ${fixIndex === i ? 'fixing' : ''}`} onClick={() => { setFixIndex(i); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+                <span className="stat">{i + 1}</span> {byKey.get(k)?.name || k} <span className="meta">→ {teamName(teamOf(i))}</span>
+              </button>
+            )).reverse()}
           </div>
         </div>
       )}
@@ -397,10 +439,18 @@ export default function DraftBoard({ authed }) {
       {tab === 'setup' && (
         <div className="setup">
           <section>
-            <h3>Your draft slot</h3>
-            <div className="chips">
+            <h3>Draft order</h3>
+            <p className="meta">Type each owner's name in pick order and tap <b>Me</b> on your row. Use ↑ ↓ if the order gets shuffled.</p>
+            <div className="order-list">
               {Array.from({ length: teams }, (_, i) => i + 1).map(n => (
-                <button key={n} className={`chip ${slot === n ? 'on' : ''}`} onClick={() => setSettings({ slot: n })}>{n}</button>
+                <div key={n} className={`order-row ${slot === n ? 'mine' : ''}`}>
+                  <span className="stat order-num">{n}</span>
+                  <input className="input order-name" value={teamNames[n] || ''} placeholder={slot === n ? 'Your name' : `Owner of pick ${n}`}
+                    onChange={e => update({ teamNames: { ...teamNames, [n]: e.target.value } })} />
+                  <button className={`chip ${slot === n ? 'on' : ''}`} onClick={() => setSettings({ slot: n })}>Me</button>
+                  <button className="chip" onClick={() => moveSlot(n, -1)} disabled={n === 1} aria-label="Move up">↑</button>
+                  <button className="chip" onClick={() => moveSlot(n, 1)} disabled={n === teams} aria-label="Move down">↓</button>
+                </div>
               ))}
             </div>
             <div className="row-inline">
@@ -498,6 +548,42 @@ function MyTeam({ players, slot, weights, myPickNums }) {
         {open.length > 0 && <p className="meta" style={{ marginTop: 8 }}>Still need: {open.join(', ')}</p>}
         <p className="meta" style={{ marginTop: 8 }}>Your picks: {myPickNums.join(', ')}</p>
       </section>
+    </div>
+  );
+}
+
+// Fast pick entry while following the room: likely picks as one-tap buttons + search
+function QuickPick({ title, available, onPick, onCancel, mine }) {
+  const [q, setQ] = useState('');
+  const likely = useMemo(
+    () => [...available].sort((a, b) => (a.yahooRank ?? 999) - (b.yahooRank ?? 999)).slice(0, 6),
+    [available],
+  );
+  const matches = useMemo(() => {
+    const n = normName(q);
+    if (n.length < 2) return [];
+    return available
+      .filter(p => normName(p.name).includes(n) || normName(p.name).split(' ').some(w => w.startsWith(n)))
+      .sort((a, b) => (a.yahooRank ?? 999) - (b.yahooRank ?? 999))
+      .slice(0, 8);
+  }, [q, available]);
+  const pick = key => { onPick(key); setQ(''); };
+  const list = q.trim().length >= 2 ? matches : likely;
+  return (
+    <div className={`quickpick ${mine ? 'mine' : ''}`}>
+      <div className="qp-title">{title}</div>
+      <input className="input qp-search" placeholder="Type a name: “jok”, “wemb”, “dyson”…" value={q} onChange={e => setQ(e.target.value)} />
+      <div className="qp-list">
+        {q.trim().length < 2 && <div className="meta qp-hint">Most likely (by ADP):</div>}
+        {list.map(p => (
+          <button key={p.key} className="qp-btn" onClick={() => pick(p.key)}>
+            <span className="qp-name">{p.name}</span>
+            <span className="meta">{(p.pos || []).join('/')} · {p.team} · ADP {p.yahooRank ?? '–'}</span>
+          </button>
+        ))}
+        {q.trim().length >= 2 && !matches.length && <div className="meta">No available player matches “{q}”.</div>}
+      </div>
+      {onCancel && <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel fix</button>}
     </div>
   );
 }
