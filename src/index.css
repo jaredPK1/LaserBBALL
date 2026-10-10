@@ -421,3 +421,14 @@ tr:hover td {
 .paste-order summary { cursor: pointer; color: var(--accent2); font-size: 13px; }
 .paste-order textarea { width: 100%; margin: 8px 0; font-family: 'DM Mono', monospace; font-size: 13px; }
 select.input-sm { width: auto; }
+
+/* ── News flags ──────────────────────────────────────── */
+.news-tag { font-weight: 600; letter-spacing: 0.02em; }
+.news-avoid { color: #f87171; border-color: rgba(239, 68, 68, 0.6); background: rgba(239, 68, 68, 0.12); }
+.news-caution { color: var(--gold); border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.1); }
+.news-target { color: #4ade80; border-color: rgba(34, 197, 94, 0.5); background: rgba(34, 197, 94, 0.1); }
+.news-info { color: #93c5fd; border-color: rgba(59, 130, 246, 0.4); }
+.news-note { font-size: 11px; margin-top: 2px; max-width: 320px; white-space: normal; }
+.news-note.news-avoid, .news-note.news-caution, .news-note.news-target { background: none; border: none; }
+.news-list { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.news-row { line-height: 1.4; }

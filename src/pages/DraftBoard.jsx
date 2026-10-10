@@ -8,6 +8,7 @@ import {
 } from '../draft/engine';
 import { analyze, scoutingNotes } from '../history/analyze';
 import { botPick, rng, simulateSeason } from '../draft/sim';
+import { newsFor, avoidNow, ALL_NEWS, NEWS_AS_OF } from '../draft/news';
 
 const STORE = 'hi_draft_v1';
 const POSITIONS = ['ALL', 'PG', 'SG', 'SF', 'PF', 'C'];
@@ -98,9 +99,18 @@ export default function DraftBoard({ authed }) {
     return list.slice(0, 150);
   }, [recs, query, posFilter, sortBy]);
 
-  const topFit = useMemo(() => [...recs].filter(p => p.fit != null).sort((a, b) => b.fit - a.fit).slice(0, 3), [recs]);
+  const topFit = useMemo(
+    () => [...recs].filter(p => p.fit != null && !avoidNow(p, clock.round)).sort((a, b) => b.fit - a.fit).slice(0, 3),
+    [recs, clock.round],
+  );
 
-  const draft = key => { if (!done) update({ picks: [...picks, key] }); };
+  const draft = key => {
+    if (done) return;
+    // Guard rail: news-flagged "avoid" players need a confirm on YOUR pick (logging others is never blocked)
+    const p = byKey.get(key);
+    if (myTurn && avoidNow(p, clock.round) && !confirm(`🚫 ${p.name}: ${newsFor(p).note}\n\nDraft anyway?`)) return;
+    update({ picks: [...picks, key] });
+  };
   // In a mock, undo also rewinds the bots' picks back to your last pick
   const undo = () => {
     if (!state.mock || !slot) return update({ picks: picks.slice(0, -1) });
@@ -149,6 +159,7 @@ export default function DraftBoard({ authed }) {
     };
     w.postMessage({
       valued, pickedKeys: picks, teams, rounds, slot, weights,
+      exclude: available.filter(p => avoidNow(p, clock.round)).map(p => p.key),
       candidates: 8, rollouts: 24, weeks: 12, seed: atPick + 1,
     });
   }
@@ -290,6 +301,7 @@ export default function DraftBoard({ authed }) {
           onPick={assign}
           onCancel={fixIndex != null ? () => setFixIndex(null) : null}
           mine={myTurn && fixIndex == null}
+          round={clock.round}
         />
       )}
 
@@ -309,7 +321,7 @@ export default function DraftBoard({ authed }) {
               <div className="recs-label">⚡ LASER: simulated H2H win rate if you take…</div>
               {laserNow.results.map((r, i) => (
                 <button key={r.key} className={`laser-row ${i === 0 ? 'best' : ''}`} onClick={() => draft(r.key)}>
-                  <span className="laser-name">{r.name} <span className="meta">{(r.pos || []).join('/')}</span></span>
+                  <span className="laser-name">{r.name} <span className="meta">{(r.pos || []).join('/')}</span> <NewsTag p={r} round={clock.round} /></span>
                   <span className="stat">{(r.winPct * 100).toFixed(1)}%</span>
                   <span className="meta">±{(r.se * 100).toFixed(1)}</span>
                 </button>
@@ -330,7 +342,7 @@ export default function DraftBoard({ authed }) {
           <div className="recs-label">BEST FITS</div>
           {topFit.map(p => (
             <button key={p.key} className="rec" onClick={() => draft(p.key)}>
-              <b>{p.name}</b> <span className="meta">{(p.pos || []).join('/')} · fit {fmt(p.fit)}{p.fillsSlot ? ' · fills slot' : ''}</span>
+              <b>{p.name}</b> <NewsTag p={p} round={clock.round} /> <span className="meta">{(p.pos || []).join('/')} · fit {fmt(p.fit)}{p.fillsSlot ? ' · fills slot' : ''}</span>
             </button>
           ))}
         </div>
@@ -398,7 +410,8 @@ export default function DraftBoard({ authed }) {
                         <td><button className="btn btn-primary btn-sm" onClick={() => draft(p.key)} disabled={done}>Draft</button></td>
                         <td className="stat">{p.valueRank ?? '–'}</td>
                         <td className="name-cell">
-                          <div className="pname">{p.name}{p.status && <span className="status-out"> {p.status}</span>}</div>
+                          <div className="pname">{p.name}{p.status && <span className="status-out"> {p.status}</span>} <NewsTag p={p} round={clock.round} /></div>
+                          {newsFor(p) && newsFor(p).level !== 'info' && <div className={`news-note news-${newsFor(p).level}`}>{newsFor(p).note}</div>}
                           <div className="meta">
                             {(p.pos || []).join('/')} · {p.team}
                             {p.gp ? ` · ${p.gp}gp` : ''}
@@ -496,6 +509,20 @@ export default function DraftBoard({ authed }) {
           </section>
 
           <section>
+            <h3>Player news flags</h3>
+            <p className="meta">Researched {NEWS_AS_OF}. 🚫 Avoid players are left out of LASER and Best Fits and ask before you draft them on your pick. Some only apply early (e.g. fine from round 10).</p>
+            <div className="news-list">
+              {ALL_NEWS.map(n => (
+                <div key={n.name} className="news-row">
+                  <span className={`tag news-tag news-${n.level}`}>{{ avoid: '🚫', caution: '⚠', target: '✓', info: 'ℹ' }[n.level]}</span>
+                  <b>{n.name}</b>{n.okFromRound ? <span className="meta"> (ok from R{n.okFromRound})</span> : null}
+                  <span className="meta">: {n.note}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
             <h3>Punt categories</h3>
             <p className="meta">Tap a category to ignore it in value and fit. In H2H you only need 5 of 9; punting FT% or TO is common with big men / ball-dominant guards.</p>
             <div className="chips">
@@ -589,7 +616,15 @@ function MyTeam({ players, slot, weights, myPickNums }) {
 }
 
 // Fast pick entry while following the room: likely picks as one-tap buttons + search
-function QuickPick({ title, available, onPick, onCancel, mine }) {
+function NewsTag({ p, round }) {
+  const n = newsFor(p);
+  if (!n) return null;
+  const level = n.level === 'avoid' && !avoidNow(p, round) ? 'caution' : n.level;
+  const label = { avoid: '🚫 AVOID', caution: '⚠ CAUTION', target: '✓ TARGET', info: 'ℹ NEWS' }[level];
+  return <span className={`tag news-tag news-${level}`} title={n.note}>{label}</span>;
+}
+
+function QuickPick({ title, available, onPick, onCancel, mine, round }) {
   const [q, setQ] = useState('');
   const likely = useMemo(
     () => [...available].sort((a, b) => (a.yahooRank ?? 999) - (b.yahooRank ?? 999)).slice(0, 6),
@@ -613,7 +648,7 @@ function QuickPick({ title, available, onPick, onCancel, mine }) {
         {q.trim().length < 2 && <div className="meta qp-hint">Most likely (by ADP):</div>}
         {list.map(p => (
           <button key={p.key} className="qp-btn" onClick={() => pick(p.key)}>
-            <span className="qp-name">{p.name}</span>
+            <span className="qp-name">{p.name} <NewsTag p={p} round={round} /></span>
             <span className="meta">{(p.pos || []).join('/')} · {p.team} · ADP {p.yahooRank ?? '–'}</span>
           </button>
         ))}

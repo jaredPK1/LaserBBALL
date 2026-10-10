@@ -41,7 +41,7 @@ function rollout({ candidate, rosters0, avail0, current, teams, rounds, slot, we
 // Returns candidates ranked by simulated H2H win rate (with standard error).
 export function laserRank({
   valued, pickedKeys, teams = 10, rounds = 13, slot, weights,
-  candidates = 8, rollouts = 16, weeks = 12, seed = 1, needOpts, onProgress,
+  candidates = 8, rollouts = 16, weeks = 12, seed = 1, needOpts, onProgress, exclude = [],
 }) {
   const byKey = new Map(valued.map(p => [p.key, p]));
   const rosters0 = Array.from({ length: teams }, () => []);
@@ -54,7 +54,8 @@ export function laserRank({
   const current = pickedKeys.length + 1;
   const left = picksForSlot(slot, teams, rounds).filter(n => n >= current).length;
 
-  const cands = recommend(avail0.filter(p => p.z), rosters0[slot - 1], weights, left, needOpts)
+  const skip = new Set(exclude);
+  const cands = recommend(avail0.filter(p => p.z && !skip.has(p.key)), rosters0[slot - 1], weights, left, needOpts)
     .sort((a, b) => b.fit - a.fit)
     .slice(0, candidates)
     .map(c => ({ player: byKey.get(c.key), fit: c.fit, samples: [] }));
