@@ -145,7 +145,7 @@ app.get('/api/draft/pool', wrap(draftPool));
 app.get('/api/draft/espn', wrap(espnDraftPool));
 // Strategy lab: every strategy from one draft slot, N simulated drafts + seasons each
 app.get('/api/draft/sim', wrap(async req => {
-  const slot = Math.min(Math.max(Number(req.query.slot) || 1, 1), 10);
+  const slot = Math.min(Math.max(Number(req.query.slot) || 1, 1), Number(req.query.teams) || 10);
   const runs = Math.min(Number(req.query.runs) || 40, 120);
   const keys = String(req.query.strategies || Object.keys(STRATEGIES).join(',')).split(',').filter(k => STRATEGIES[k]);
   const { players } = await loadPool({ query: {} });
@@ -157,11 +157,11 @@ app.get('/api/draft/sim', wrap(async req => {
     laserWeeks: Number(req.query.lw) || undefined,
   };
   const results = keys.map(k => {
-    const r = evaluateStrategy(players, { strategyKey: k, mySlot: slot, runs, seed: Number(req.query.seed) || 1, engine });
+    const r = evaluateStrategy(players, { strategyKey: k, mySlot: slot, runs, seed: Number(req.query.seed) || 1, engine, teams: Number(req.query.teams) || 10, rounds: Number(req.query.rounds) || 13 });
     if (!req.query.sample) delete r.sample;
     return r;
   });
-  return { slot, runs, engine, results: results.sort((a, b) => b.winPct - a.winPct) };
+  return { slot, teams: Number(req.query.teams) || 10, runs, engine, results: results.sort((a, b) => b.winPct - a.winPct) };
 }));
 app.get('/api/history/seasons', wrap(historySeasons));
 app.get('/api/history/season/:leagueKey', wrap(historySeason));

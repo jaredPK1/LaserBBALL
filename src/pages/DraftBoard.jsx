@@ -178,6 +178,28 @@ export default function DraftBoard({ authed }) {
     draft(key);
   };
 
+  // Changing league size: keep names, drop a slot that no longer exists
+  const changeTeams = n => {
+    if (picks.length && !confirm('Changing the number of teams re-assigns picks already made. Continue?')) return;
+    setSettings({ teams: n, ...(slot && slot > n ? { slot: null } : {}) });
+  };
+
+  // Paste a numbered or plain list of owners → names + team count; detects your row if you've named it before
+  const [orderText, setOrderText] = useState('');
+  const applyOrder = () => {
+    const names = orderText.split(/\r?\n/).map(l => l.replace(/^\s*\d+[.):-]?\s*/, '').trim()).filter(Boolean);
+    if (names.length < 2) return;
+    const myName = slot ? (teamNames[slot] || '').trim().toLowerCase() : '';
+    const mine = names.findIndex(n => myName && n.toLowerCase() === myName);
+    setState(s2 => ({
+      ...s2,
+      teamNames: Object.fromEntries(names.map((n, i) => [i + 1, n])),
+      settings: { ...s2.settings, teams: names.length, slot: mine >= 0 ? mine + 1 : (s2.settings.slot && s2.settings.slot <= names.length ? s2.settings.slot : null) },
+    }));
+    setOrderText('');
+    setMsg({ ok: true, text: `Draft order set: ${names.length} teams. Tap Me on your row if it isn't highlighted.` });
+  };
+
   // Draft order editor helpers (names live in teamNames by slot number)
   const moveSlot = (t, dir) => {
     const u = t + dir;
@@ -440,6 +462,12 @@ export default function DraftBoard({ authed }) {
         <div className="setup">
           <section>
             <h3>Draft order</h3>
+            <details className="paste-order">
+              <summary>Paste the draft order (one name per line)</summary>
+              <textarea className="input" rows={6} value={orderText} onChange={e => setOrderText(e.target.value)}
+                placeholder={'1. Caleb\n2. John\n3. Jake\n…'} />
+              <button className="btn btn-primary btn-sm" onClick={applyOrder} disabled={!orderText.trim()}>Use this order</button>
+            </details>
             <p className="meta">Type each owner's name in pick order and tap <b>Me</b> on your row. Use ↑ ↓ if the order gets shuffled.</p>
             <div className="order-list">
               {Array.from({ length: teams }, (_, i) => i + 1).map(n => (
@@ -454,8 +482,16 @@ export default function DraftBoard({ authed }) {
               ))}
             </div>
             <div className="row-inline">
-              <label>Teams <input className="input input-sm" type="number" min="4" max="20" value={teams} onChange={e => setSettings({ teams: Number(e.target.value) || 10 })} /></label>
-              <label>Rounds <input className="input input-sm" type="number" min="5" max="20" value={rounds} onChange={e => setSettings({ rounds: Number(e.target.value) || 13 })} /></label>
+              <label>Teams{' '}
+                <select className="input input-sm" value={teams} onChange={e => changeTeams(Number(e.target.value))}>
+                  {Array.from({ length: 13 }, (_, i) => i + 4).map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <label>Rounds{' '}
+                <select className="input input-sm" value={rounds} onChange={e => setSettings({ rounds: Number(e.target.value) })}>
+                  {Array.from({ length: 16 }, (_, i) => i + 5).map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
             </div>
           </section>
 

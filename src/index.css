@@ -417,3 +417,7 @@ tr:hover td {
 .log-pick { display: block; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); color: var(--text); font: inherit; font-size: 13px; padding: 5px 0; cursor: pointer; }
 .log-pick.fixing { color: var(--accent); }
 @media (max-width: 900px) { .qp-list { grid-template-columns: 1fr 1fr; } .qp-btn { padding: 8px 10px; } }
+.paste-order { margin: 8px 0; }
+.paste-order summary { cursor: pointer; color: var(--accent2); font-size: 13px; }
+.paste-order textarea { width: 100%; margin: 8px 0; font-family: 'DM Mono', monospace; font-size: 13px; }
+select.input-sm { width: auto; }
