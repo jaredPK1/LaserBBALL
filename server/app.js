@@ -6,7 +6,8 @@ import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } fro
 import { gameNight } from './gamenight.js';
 import { draftPool } from './draft.js';
 import { espnDraftPool, loadPool } from './espn.js';
-import { evaluateStrategy, STRATEGIES } from '../src/draft/sim.js';
+import { evaluateStrategy, STRATEGIES, simulateSeason } from '../src/draft/sim.js';
+import { computeValues, normName, CATS } from '../src/draft/engine.js';
 import '../src/draft/laser.js';
 import { historySeasons, historySeason } from './history.js';
 
@@ -172,6 +173,37 @@ app.get('/api/nba/scoreboard', wrap(() => getScoreboard()));
 app.get('/api/gamenight', wrap(gameNight));
 app.get('/api/draft/pool', wrap(draftPool));
 app.get('/api/draft/espn', wrap(espnDraftPool));
+// Grade real rosters: match names to the ESPN pool, then simulate many seasons (all-play H2H 9-cat).
+// GET /api/draft/grade?data=<base64url JSON [{name, players:[...names]}]>&seasons=40
+app.get('/api/draft/grade', wrap(async req => {
+  const teamsIn = JSON.parse(Buffer.from(String(req.query.data || ''), 'base64url').toString('utf8'));
+  const { players } = await loadPool({ query: { count: 400 } });
+  const valued = computeValues(players, { teams: teamsIn.length, rounds: 13 });
+  const byName = new Map(valued.map(p => [normName(p.name), p]));
+  const unmatched = [];
+  const rosters = teamsIn.map(t => t.players.map(n => byName.get(normName(n)) || (unmatched.push(`${t.name}: ${n}`), null)).filter(Boolean));
+  const seasons = Math.min(Number(req.query.seasons) || 40, 100);
+  const acc = rosters.map(() => ({ win: 0, rank: 0, first: 0, cats: Object.fromEntries(CATS.map(c => [c.k, 0])) }));
+  for (let s = 0; s < seasons; s++) {
+    const res = simulateSeason(rosters, { weeks: 20, seed: 1000 + s * 31 });
+    res.forEach((r, i) => {
+      const rank = 1 + res.filter((x, j) => j !== i && x.winPct > r.winPct).length;
+      acc[i].win += r.winPct; acc[i].rank += rank; if (rank === 1) acc[i].first++;
+      for (const c of CATS) acc[i].cats[c.k] += r.cats[c.k];
+    });
+  }
+  const out = teamsIn.map((t, i) => ({
+    team: t.name,
+    winPct: +(acc[i].win / seasons).toFixed(3),
+    avgRank: +(acc[i].rank / seasons).toFixed(2),
+    firstPlace: +(acc[i].first / seasons).toFixed(2),
+    cats: Object.fromEntries(Object.entries(acc[i].cats).map(([k, v]) => [k, +(v / seasons).toFixed(2)])),
+    totalValue: +rosters[i].reduce((a, p) => a + (p.value || 0), 0).toFixed(1),
+    gpWeighted: Math.round(rosters[i].reduce((a, p) => a + (p.gp || 0), 0) / rosters[i].length),
+  })).sort((a, b) => b.winPct - a.winPct);
+  return { seasons, unmatched, teams: out };
+}));
+
 // Strategy lab: every strategy from one draft slot, N simulated drafts + seasons each
 app.get('/api/draft/sim', wrap(async req => {
   const slot = Math.min(Math.max(Number(req.query.slot) || 1, 1), Number(req.query.teams) || 10);
