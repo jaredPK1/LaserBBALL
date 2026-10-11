@@ -1,27 +1,37 @@
-// Tiny key-value store on Upstash Redis (REST). Vercel's Storage → Upstash
-// integration injects these env vars automatically; no SDK needed.
-const url = () => (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '');
-const token = () => process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+// Tiny key-value store on a Supabase table (PostgREST, no SDK needed).
+// Table public.laserbball_draft_sync(key text primary key, doc jsonb, updated_at) with RLS
+// on and no policies, so only the server's secret key can read or write it.
+const url = () => (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+const secret = () => process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const TABLE = 'laserbball_draft_sync';
 
-export const storeConfigured = () => !!(url() && token());
+export const storeConfigured = () => !!(url() && secret());
 
-async function command(args) {
+async function rest(path, opts = {}) {
   if (!storeConfigured()) throw Object.assign(new Error('Cloud sync storage is not set up'), { status: 503 });
-  const r = await fetch(url(), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(args),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok || data.error) throw Object.assign(new Error(`Storage error: ${data.error || r.status}`), { status: 502 });
-  return data.result;
+  const key = secret();
+  const headers = { apikey: key, 'Content-Type': 'application/json', ...opts.headers };
+  // Legacy service_role keys are JWTs and also go in Authorization; new sb_secret_ keys don't
+  if (key.startsWith('eyJ')) headers.Authorization = `Bearer ${key}`;
+  const r = await fetch(`${url()}/rest/v1/${path}`, { ...opts, headers });
+  const text = await r.text();
+  if (!r.ok) {
+    let msg = String(r.status);
+    try { msg = JSON.parse(text).message || msg; } catch { /* keep status */ }
+    throw Object.assign(new Error(`Storage error: ${msg}`), { status: 502 });
+  }
+  return text ? JSON.parse(text) : null;
 }
 
 export async function getJson(key) {
-  const v = await command(['GET', key]);
-  return v ? JSON.parse(v) : null;
+  const rows = await rest(`${TABLE}?key=eq.${encodeURIComponent(key)}&select=doc`);
+  return rows?.[0]?.doc ?? null;
 }
 
 export async function setJson(key, value) {
-  await command(['SET', key, JSON.stringify(value)]);
+  await rest(`${TABLE}?on_conflict=key`, {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ key, doc: value, updated_at: new Date().toISOString() }),
+  });
 }

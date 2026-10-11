@@ -5,8 +5,8 @@ import { seal } from '../server/session.js';
 process.env.SESSION_SECRET = 'x'.repeat(40);
 process.env.YAHOO_CLIENT_ID = 'cid';
 process.env.YAHOO_CLIENT_SECRET = 'csecret';
-process.env.KV_REST_API_URL = 'https://kv.example.test';
-process.env.KV_REST_API_TOKEN = 'kvtoken';
+process.env.SUPABASE_URL = 'https://sb.example.test';
+process.env.SUPABASE_SECRET_KEY = 'sb_secret_test';
 const KV = new Map();
 
 const { default: app } = await import('../server/app.js');
@@ -104,10 +104,15 @@ before(async () => {
     if (url.startsWith('http://127.0.0.1')) return realFetch(url, opts);
     const json = body => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     if (url.includes('get_token')) return json({ access_token: 'AT', refresh_token: 'RT2', expires_in: 3600 });
-    if (url.startsWith('https://kv.example.test')) {
-      const [cmd, key, val] = JSON.parse(opts.body);
-      if (cmd === 'GET') return json({ result: KV.get(key) ?? null });
-      if (cmd === 'SET') { KV.set(key, val); return json({ result: 'OK' }); }
+    if (url.startsWith('https://sb.example.test/rest/v1/laserbball_draft_sync')) {
+      if (opts?.headers?.apikey !== 'sb_secret_test') return new Response('{"message":"bad key"}', { status: 401 });
+      if ((opts?.method || 'GET') === 'GET') {
+        const key = decodeURIComponent(new URL(url).searchParams.get('key').replace(/^eq\./, ''));
+        return json(KV.has(key) ? [{ doc: KV.get(key) }] : []);
+      }
+      const row = JSON.parse(opts.body);
+      KV.set(row.key, row.doc);
+      return new Response(null, { status: 201 });
     }
     if (url.includes('fantasysports.yahooapis.com')) {
       const path = decodeURIComponent(url.split('/fantasy/v2/')[1].split('?')[0]);
