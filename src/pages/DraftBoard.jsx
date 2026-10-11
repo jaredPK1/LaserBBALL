@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getDraftPool, getEspnPool } from '../api/yahoo';
+import axios from 'axios';
+import { getDraftPool, getEspnPool, startAuth } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import {
   CATS, DEFAULT_SETTINGS, computeValues, teamOnClock, picksForSlot, slotFill,
@@ -51,6 +52,76 @@ export default function DraftBoard({ authed }) {
   useEffect(() => {
     try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage full/blocked */ }
   }, [state]);
+
+  // ── Profile-linked sync: the draft lives on the server under your Yahoo login,
+  // so every logged-in device shows the same draft (polls every 10s).
+  const [sync, setSync] = useState(authed ? 'connecting' : 'off');
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const syncSig = JSON.stringify({ settings: state.settings, teamNames: state.teamNames, teamManagers: state.teamManagers || {}, picks: state.picks, mock: !!state.mock });
+  const prevSig = useRef(null);
+  const remoteSig = useRef(null);
+  const sigOf = d => JSON.stringify({ settings: { ...DEFAULT_SETTINGS, ...d.settings }, teamNames: d.teamNames || {}, teamManagers: d.teamManagers || {}, picks: d.picks || [], mock: !!d.mock });
+
+  const applyRemote = doc => {
+    remoteSig.current = sigOf(doc);
+    setState(s => ({
+      ...s, settings: { ...DEFAULT_SETTINGS, ...doc.settings }, teamNames: doc.teamNames || {},
+      teamManagers: doc.teamManagers || {}, picks: doc.picks || [], mock: !!doc.mock, updatedAt: doc.updatedAt,
+    }));
+    if (!stateRef.current.pool.length) loadEspn();
+  };
+
+  const push = async updatedAt => {
+    const s = stateRef.current;
+    try {
+      const { data } = await axios.put('/api/me/draft', {
+        settings: s.settings, teamNames: s.teamNames, teamManagers: s.teamManagers || {}, picks: s.picks,
+        mock: !!s.mock, source: s.meta?.source || null, updatedAt,
+      });
+      if (data.stale && data.doc) applyRemote(data.doc);
+      setSync('synced');
+    } catch (e) {
+      setSync(e.response?.status === 401 ? 'login' : e.response?.status === 503 ? 'unconfigured' : 'error');
+    }
+  };
+
+  const pull = async initial => {
+    try {
+      const { data } = await axios.get('/api/me/draft');
+      if (!data.configured) { setSync('unconfigured'); return; }
+      const doc = data.doc;
+      const local = stateRef.current;
+      if (doc && doc.updatedAt > (local.updatedAt || 0)) applyRemote(doc);
+      else if (initial && (!doc || (local.updatedAt || 0) > doc.updatedAt) && (local.picks.length || Object.keys(local.teamNames || {}).length)) {
+        const t = local.updatedAt || Date.now();
+        setState(s => ({ ...s, updatedAt: t }));
+        await push(t);
+      }
+      setSync('synced');
+    } catch (e) {
+      setSync(e.response?.status === 401 ? 'login' : 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (!authed) return;
+    pull(true);
+    const id = setInterval(() => { if (document.visibilityState === 'visible') pull(false); }, 10000);
+    return () => clearInterval(id);
+  }, [authed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Local edits (not remote applies, not first render) are timestamped and pushed
+  useEffect(() => {
+    if (prevSig.current === null) { prevSig.current = syncSig; return; }
+    if (syncSig === prevSig.current) return;
+    prevSig.current = syncSig;
+    if (syncSig === remoteSig.current || !authed || sync === 'unconfigured') return;
+    const t = Date.now();
+    setState(s => ({ ...s, updatedAt: t }));
+    const timer = setTimeout(() => push(t), 400);
+    return () => clearTimeout(timer);
+  }, [syncSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { pool, settings, picks, teamNames } = state;
   const teamManagers = state.teamManagers || {};
@@ -287,6 +358,7 @@ export default function DraftBoard({ authed }) {
           </>
         )}
         <div className="clock-actions">
+          <SyncPill status={sync} />
           {scouting.length === 0 && <span className="meta">Open League Intel once to get scouting notes here</span>}
           <button className="btn btn-ghost" onClick={undo} disabled={!picks.length}>Undo</button>
         </div>
@@ -616,6 +688,22 @@ function MyTeam({ players, slot, weights, myPickNums }) {
 }
 
 // Fast pick entry while following the room: likely picks as one-tap buttons + search
+function SyncPill({ status }) {
+  const map = {
+    synced: ['☁ Synced', 'sync-ok', 'Saved to your account; open on any logged-in device'],
+    connecting: ['☁ Syncing…', 'sync-wait', ''],
+    login: ['☁ Log in to sync', 'sync-warn', 'Tap to log in with Yahoo'],
+    off: ['☁ Log in to sync', 'sync-warn', 'Tap to log in with Yahoo'],
+    unconfigured: ['☁ Sync not set up', 'sync-warn', 'Cloud storage isn’t connected on the server yet'],
+    error: ['☁ Sync error', 'sync-err', 'Couldn’t reach the server; your picks are still saved on this device'],
+  };
+  const [label, cls, title] = map[status] || map.error;
+  const clickable = status === 'login' || status === 'off';
+  return (
+    <button className={`sync-pill ${cls}`} title={title} onClick={clickable ? startAuth : undefined} disabled={!clickable}>{label}</button>
+  );
+}
+
 function NewsTag({ p, round }) {
   const n = newsFor(p);
   if (!n) return null;

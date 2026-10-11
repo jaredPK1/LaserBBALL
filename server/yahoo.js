@@ -68,6 +68,7 @@ async function tokenRequest(req, body) {
     expires_at: Date.now() + (data.expires_in || 3600) * 1000 - 60_000,
     client: clientTag(),
     scope: data.scope || null,
+    guid: data.xoauth_yahoo_guid || null,
   };
 }
 
@@ -103,7 +104,7 @@ async function accessToken(req, res, force = false) {
   if (!force && s.access_token && Date.now() < s.expires_at) return s.access_token;
   try {
     const t = await tokenRequest(req, { grant_type: 'refresh_token', refresh_token: s.refresh_token });
-    const next = { ...t, refresh_token: t.refresh_token || s.refresh_token, login_at: s.login_at, scope: t.scope || s.scope };
+    const next = { ...t, refresh_token: t.refresh_token || s.refresh_token, login_at: s.login_at, scope: t.scope || s.scope, guid: t.guid || s.guid };
     saveSession(req, res, next);
     return next.access_token;
   } catch (e) {
@@ -251,4 +252,12 @@ export async function debugYahoo(req, res) {
     }
   }
   return out;
+}
+
+// Stable per-user id for server-side storage: your Yahoo account guid, captured
+// at login. Sessions from before guid capture must log in again to sync
+// (a per-device fallback would silently give each device its own copy).
+export function userKey(req) {
+  const s = currentSession(req);
+  return s?.guid ? `y:${s.guid}` : null;
 }

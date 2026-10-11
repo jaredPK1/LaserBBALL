@@ -1,6 +1,7 @@
 // Hoop Intel API. Runs as a Vercel function (api/index.js) and locally (server/dev.js).
 import express from 'express';
-import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo } from './yahoo.js';
+import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo, userKey } from './yahoo.js';
+import { storeConfigured, getJson, setJson } from './store.js';
 import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } from './nba.js';
 import { gameNight } from './gamenight.js';
 import { draftPool } from './draft.js';
@@ -33,6 +34,33 @@ app.get('/api/auth/status', wrap(req => ({ authed: isAuthed(req) })));
 app.post('/api/auth/logout', wrap(logout));
 app.get('/api/debug/yahoo', wrap(debugYahoo));
 
+// ── Profile-linked draft sync (keyed to your Yahoo login) ──────────────────
+const SYNC_FIELDS = ['settings', 'teamNames', 'teamManagers', 'picks', 'mock', 'source'];
+function requireUser(req) {
+  const k = userKey(req);
+  if (!k) throw Object.assign(new Error('Log in with Yahoo (again) to sync'), { status: 401 });
+  return `draft:${k}`;
+}
+app.get('/api/me/draft', wrap(async req => {
+  if (!storeConfigured()) return { configured: false };
+  const doc = await getJson(requireUser(req));
+  return { configured: true, doc };
+}));
+app.put('/api/me/draft', wrap(async req => {
+  const key = requireUser(req);
+  const body = req.body || {};
+  if (!Number.isFinite(body.updatedAt) || !Array.isArray(body.picks)) {
+    throw Object.assign(new Error('Bad draft payload'), { status: 400 });
+  }
+  const current = await getJson(key);
+  // Last write wins, but never let an older copy overwrite a newer one
+  if (current && current.updatedAt > body.updatedAt) return { ok: false, stale: true, doc: current };
+  const doc = Object.fromEntries(SYNC_FIELDS.filter(f => body[f] !== undefined).map(f => [f, body[f]]));
+  doc.updatedAt = body.updatedAt;
+  await setJson(key, doc);
+  return { ok: true, updatedAt: doc.updatedAt };
+}));
+
 // ── Health (public): confirms the live-data feeds are reachable from this host ─
 app.get('/api/health', wrap(async () => {
   const check = async fn => { try { return { ok: true, info: await fn() }; } catch (e) { return { ok: false, error: e.message }; } };
@@ -43,6 +71,7 @@ app.get('/api/health', wrap(async () => {
       .map(k => [k, process.env[k] === undefined ? 'missing' : process.env[k].trim() ? 'set' : 'empty'])),
     redirectUri: process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL.replace(/\/$/, '')}/api/auth/callback` : '(derived from request host)',
     sessionConfigured: (process.env.SESSION_SECRET || '').length >= 32,
+    syncConfigured: storeConfigured(),
     nbaSchedule: await check(async () => `${(await getSchedule()).length} games`),
     nbaScoreboard: await check(async () => { const s = await getScoreboard(); return `${s.date}: ${s.games.length} games`; }),
   };

@@ -5,6 +5,9 @@ import { seal } from '../server/session.js';
 process.env.SESSION_SECRET = 'x'.repeat(40);
 process.env.YAHOO_CLIENT_ID = 'cid';
 process.env.YAHOO_CLIENT_SECRET = 'csecret';
+process.env.KV_REST_API_URL = 'https://kv.example.test';
+process.env.KV_REST_API_TOKEN = 'kvtoken';
+const KV = new Map();
 
 const { default: app } = await import('../server/app.js');
 const { etDate, addDays } = await import('../server/nba.js');
@@ -101,6 +104,11 @@ before(async () => {
     if (url.startsWith('http://127.0.0.1')) return realFetch(url, opts);
     const json = body => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     if (url.includes('get_token')) return json({ access_token: 'AT', refresh_token: 'RT2', expires_in: 3600 });
+    if (url.startsWith('https://kv.example.test')) {
+      const [cmd, key, val] = JSON.parse(opts.body);
+      if (cmd === 'GET') return json({ result: KV.get(key) ?? null });
+      if (cmd === 'SET') { KV.set(key, val); return json({ result: 'OK' }); }
+    }
     if (url.includes('fantasysports.yahooapis.com')) {
       const path = decodeURIComponent(url.split('/fantasy/v2/')[1].split('?')[0]);
       if (FIX[path]) return json(FIX[path]);
@@ -121,7 +129,7 @@ before(async () => {
 after(() => { server.close(); globalThis.fetch = realFetch; });
 
 const { clientTag } = await import('../server/yahoo.js');
-const cookie = `hi_sess=${seal({ access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3e6, client: clientTag() })}`;
+const cookie = `hi_sess=${seal({ access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3e6, client: clientTag(), guid: 'GUID1' })}`;
 const get = (p, auth = true) => realFetch(`${base}${p}`, { headers: auth ? { cookie } : {}, redirect: 'manual' });
 
 test('auth status + redirect + 401 when not connected', async () => {
@@ -219,4 +227,21 @@ test('sessions from a different Yahoo app are treated as logged out', async () =
   assert.equal(d.session.fromCurrentApp, false);
   const ok = await (await get('/api/debug/yahoo')).json();
   assert.equal(ok.calls['users;use_login=1/games;game_keys=nba/leagues/teams'].status, 200);
+});
+
+test('profile-linked draft sync: save, load, stale guard, login required', async () => {
+  const put = (body, c = cookie) => realFetch(`${base}/api/me/draft`, { method: 'PUT', headers: { cookie: c, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const doc = { settings: { teams: 8, rounds: 13, slot: 7 }, teamNames: { 7: 'Jared' }, picks: ['espn:1', 'espn:2'], updatedAt: 1000 };
+  assert.equal((await put(doc)).status, 200);
+  const got = await (await get('/api/me/draft')).json();
+  assert.equal(got.configured, true);
+  assert.deepEqual(got.doc.picks, ['espn:1', 'espn:2']);
+  assert.equal(got.doc.teamNames['7'], 'Jared');
+  const stale = await (await put({ ...doc, picks: [], updatedAt: 500 })).json();
+  assert.equal(stale.stale, true);
+  assert.deepEqual(stale.doc.picks, ['espn:1', 'espn:2']);
+  assert.equal((await get('/api/me/draft', false)).status, 401);
+  assert.equal((await put({ picks: 'x', updatedAt: 1 })).status, 400);
+  const noGuid = `hi_sess=${seal({ access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3e6, client: clientTag() })}`;
+  assert.equal((await realFetch(`${base}/api/me/draft`, { headers: { cookie: noGuid } })).status, 401);
 });
