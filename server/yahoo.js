@@ -226,6 +226,7 @@ export async function debugYahoo(req, res) {
       loginAt: raw.login_at ? new Date(raw.login_at).toISOString() : 'unknown (logged in before this build)',
       fromCurrentApp: raw.client === clientTag(),
       scope: raw.scope,
+      hasAccountId: !!raw.guid, // needed for cross-device sync
     } : null,
     calls: {},
   };
