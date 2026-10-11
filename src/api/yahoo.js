@@ -17,8 +17,9 @@ export const checkAuth = async () => {
 
 export const isAuthenticated = () => !!authed;
 
+// Return to the page login started from (e.g. the draft board), not the dashboard
 export const startAuth = () => {
-  window.location.href = `${BASE}/auth`;
+  window.location.href = `${BASE}/auth?next=${encodeURIComponent(window.location.pathname)}`;
 };
 
 export const clearTokens = async () => {

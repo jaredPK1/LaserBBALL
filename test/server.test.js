@@ -150,6 +150,19 @@ test('auth status + redirect + 401 when not connected', async () => {
   assert.equal((await get('/api/nope')).status, 404);
 });
 
+test('login returns to the page it started from, same-site only', async () => {
+  const { safeNext } = await import('../server/yahoo.js');
+  assert.equal(safeNext('/draft'), '/draft');
+  for (const bad of ['//evil.com', '/\\evil.com', 'https://evil.com', '', undefined]) assert.equal(safeNext(bad), '/');
+  const start = await get('/api/auth?next=%2Fdraft', false);
+  const cookies = start.headers.getSetCookie().map(c => c.split(';')[0]);
+  assert.ok(cookies.includes('hi_next=%2Fdraft'));
+  const state = new URL(start.headers.get('location')).searchParams.get('state');
+  const cb = await realFetch(`${base}/api/auth/callback?code=C&state=${state}`, { headers: { cookie: cookies.join('; ') }, redirect: 'manual' });
+  assert.equal(cb.status, 302);
+  assert.equal(cb.headers.get('location'), '/draft');
+});
+
 test('expired access token is refreshed and re-sealed', async () => {
   const stale = `hi_sess=${seal({ access_token: 'old', refresh_token: 'RT', expires_at: 0, client: clientTag() })}`;
   const r = await realFetch(`${base}/api/context`, { headers: { cookie: stale } });

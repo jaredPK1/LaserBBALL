@@ -31,10 +31,17 @@ function clientCreds() {
   return { id, secret };
 }
 
+// Only same-site paths, so the login redirect can't be pointed at another site
+export function safeNext(next) {
+  const n = String(next || '/');
+  return /^\/(?![/\\])/.test(n) ? n : '/';
+}
+
 export function authRedirect(req, res) {
   const { id } = clientCreds();
   const state = crypto.randomBytes(16).toString('hex');
   setCookie(req, res, 'hi_state', state, 600);
+  setCookie(req, res, 'hi_next', safeNext(req.query.next), 600);
   const params = new URLSearchParams({
     client_id: id,
     redirect_uri: redirectUri(req),
@@ -80,8 +87,10 @@ export async function handleCallback(req, res) {
   }
   const tokens = await tokenRequest(req, { grant_type: 'authorization_code', code: String(code) });
   saveSession(req, res, { ...tokens, login_at: Date.now() });
+  const next = safeNext(parseCookies(req).hi_next);
   setCookie(req, res, 'hi_state', '', 0);
-  res.redirect('/');
+  setCookie(req, res, 'hi_next', '', 0);
+  res.redirect(next);
 }
 
 export function logout(req, res) {
