@@ -8,6 +8,7 @@ process.env.YAHOO_CLIENT_SECRET = 'csecret';
 process.env.SUPABASE_URL = 'https://sb.example.test';
 process.env.SUPABASE_SECRET_KEY = 'sb_secret_test';
 const KV = new Map();
+let TOKEN_GRANTS = 0;
 
 const { default: app } = await import('../server/app.js');
 const { etDate, addDays } = await import('../server/nba.js');
@@ -103,7 +104,7 @@ before(async () => {
     url = String(url);
     if (url.startsWith('http://127.0.0.1')) return realFetch(url, opts);
     const json = body => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
-    if (url.includes('get_token')) return json({ access_token: 'AT', refresh_token: 'RT2', expires_in: 3600 });
+    if (url.includes('get_token')) { TOKEN_GRANTS++; return json({ access_token: 'AT', refresh_token: 'RT2', expires_in: 3600 }); }
     if (url.startsWith('https://sb.example.test/rest/v1/laserbball_draft_sync')) {
       if (opts?.headers?.apikey !== 'sb_secret_test') return new Response('{"message":"bad key"}', { status: 401 });
       if ((opts?.method || 'GET') === 'GET') {
@@ -161,6 +162,20 @@ test('login returns to the page it started from, same-site only', async () => {
   const cb = await realFetch(`${base}/api/auth/callback?code=C&state=${state}`, { headers: { cookie: cookies.join('; ') }, redirect: 'manual' });
   assert.equal(cb.status, 302);
   assert.equal(cb.headers.get('location'), '/draft');
+});
+
+test('token refreshes are minimized: one per burst, shared across devices', async () => {
+  // Each Yahoo refresh emails the user a "New sign in" notice
+  const expired = `hi_sess=${seal({ access_token: null, expires_at: 0, refresh_token: 'RT', client: clientTag(), guid: 'GUID-TOK' })}`;
+  TOKEN_GRANTS = 0;
+  const warm = await realFetch(`${base}/api/auth/warm`, { method: 'POST', headers: { cookie: expired } });
+  assert.deepEqual(await warm.json(), { ok: true });
+  assert.equal(TOKEN_GRANTS, 1);
+  // Another device (or a cookie that dropped the token for size) reuses it
+  const calls = await Promise.all([1, 2, 3].map(() => realFetch(`${base}/api/context`, { headers: { cookie: expired } })));
+  assert.ok(calls.every(r => r.status === 200));
+  assert.equal(TOKEN_GRANTS, 1);
+  assert.equal((await (await realFetch(`${base}/api/auth/warm`, { method: 'POST' })).json()).ok, false);
 });
 
 test('expired access token is refreshed and re-sealed', async () => {

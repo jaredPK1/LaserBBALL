@@ -1,6 +1,7 @@
 // Yahoo OAuth 2.0 + Fantasy API client, plus helpers for Yahoo's awkward JSON.
 import crypto from 'node:crypto';
-import { loadSession, saveSession, clearSession, setCookie, parseCookies } from './session.js';
+import { loadSession, saveSession, clearSession, setCookie, parseCookies, seal, unseal } from './session.js';
+import { storeConfigured, getJson, setJson } from './store.js';
 
 const AUTH_URL = 'https://api.login.yahoo.com/oauth2/request_auth';
 const TOKEN_URL = 'https://api.login.yahoo.com/oauth2/get_token';
@@ -87,6 +88,9 @@ export async function handleCallback(req, res) {
   }
   const tokens = await tokenRequest(req, { grant_type: 'authorization_code', code: String(code) });
   saveSession(req, res, { ...tokens, login_at: Date.now() });
+  if (tokens.guid && storeConfigured()) {
+    await setJson(tokenKey(tokens), { at: seal({ at: tokens.access_token }), exp: tokens.expires_at }).catch(() => {});
+  }
   const next = safeNext(parseCookies(req).hi_next);
   setCookie(req, res, 'hi_state', '', 0);
   setCookie(req, res, 'hi_next', '', 0);
@@ -107,19 +111,54 @@ export function isAuthed(req) {
   return !!currentSession(req);
 }
 
+// Every refresh-token grant makes Yahoo email a "New sign in" notice, so refresh
+// as rarely as possible: reuse a token another request/device already minted
+// (kept encrypted server-side, since the cookie may have to drop it for size),
+// and let concurrent calls within one request share a single refresh.
+const tokenKey = s => `tok:y:${s.guid}`;
+
+async function sharedToken(s) {
+  if (!s.guid || !storeConfigured()) return null;
+  try {
+    const t = await getJson(tokenKey(s));
+    const at = t && Date.now() < t.exp ? unseal(t.at)?.at : null;
+    return at ? { access_token: at, expires_at: t.exp } : null;
+  } catch { return null; }
+}
+
+async function refresh(req, res, s) {
+  const t = await tokenRequest(req, { grant_type: 'refresh_token', refresh_token: s.refresh_token });
+  const next = { ...t, refresh_token: t.refresh_token || s.refresh_token, login_at: s.login_at, scope: t.scope || s.scope, guid: t.guid || s.guid };
+  saveSession(req, res, next);
+  if (next.guid && storeConfigured()) {
+    await setJson(tokenKey(next), { at: seal({ at: next.access_token }), exp: next.expires_at }).catch(() => {});
+  }
+  return next.access_token;
+}
+
 async function accessToken(req, res, force = false) {
   const s = currentSession(req);
   if (!s) throw new AuthError('Not connected to Yahoo');
   if (!force && s.access_token && Date.now() < s.expires_at) return s.access_token;
+  if (!force) {
+    const shared = await sharedToken(s);
+    if (shared) { req._session = { ...s, ...shared }; return shared.access_token; }
+  }
+  req._refreshing ||= refresh(req, res, s).finally(() => { req._refreshing = null; });
   try {
-    const t = await tokenRequest(req, { grant_type: 'refresh_token', refresh_token: s.refresh_token });
-    const next = { ...t, refresh_token: t.refresh_token || s.refresh_token, login_at: s.login_at, scope: t.scope || s.scope, guid: t.guid || s.guid };
-    saveSession(req, res, next);
-    return next.access_token;
+    return await req._refreshing;
   } catch (e) {
     if (e.status === 401) { clearSession(req, res); throw new AuthError('Yahoo session expired — reconnect'); }
     throw e;
   }
+}
+
+// Called once per page load before any Yahoo calls, so parallel requests that
+// follow all carry the fresh token instead of each refreshing on their own
+export async function warmToken(req, res) {
+  if (!currentSession(req)) return { ok: false };
+  await accessToken(req, res);
+  return { ok: true };
 }
 
 // Fetch a Fantasy API resource path, e.g. "league/nba.l.33458/settings"

@@ -1,6 +1,6 @@
 // Hoop Intel API. Runs as a Vercel function (api/index.js) and locally (server/dev.js).
 import express from 'express';
-import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo, userKey } from './yahoo.js';
+import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo, userKey, warmToken } from './yahoo.js';
 import { storeConfigured, getJson, setJson } from './store.js';
 import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } from './nba.js';
 import { gameNight } from './gamenight.js';
@@ -31,6 +31,7 @@ const STATS = 'stats;type=average_season';
 // ── Auth ─────────────────────────────────────────────────────────────────────
 app.get('/api/auth', wrap(authRedirect));
 app.get('/api/auth/callback', wrap(handleCallback));
+app.post('/api/auth/warm', wrap(warmToken));
 app.get('/api/auth/status', wrap(req => ({ authed: isAuthed(req) })));
 app.post('/api/auth/logout', wrap(logout));
 app.get('/api/debug/yahoo', wrap(debugYahoo));

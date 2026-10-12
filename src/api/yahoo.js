@@ -27,7 +27,12 @@ export const clearTokens = async () => {
   authed = false;
 };
 
+// One token refresh per page load, before the parallel calls that follow
+let warm = null;
+const warmUp = () => (warm ||= axios.post(`${BASE}/auth/warm`).catch(() => {}));
+
 const apiCall = async (fn) => {
+  await warmUp();
   try {
     return await fn();
   } catch (err) {
