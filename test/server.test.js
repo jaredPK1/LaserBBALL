@@ -263,23 +263,23 @@ test('sessions from a different Yahoo app are treated as logged out', async () =
 });
 
 test('draft sync by private code: save, load, stale guard, code required', async () => {
-  const CODE = 'laser-abcd-efgh-jkmn';
+  const CODE = 'K7M-2XQ';
   const hdr = (code = CODE) => ({ 'x-sync-code': code, 'content-type': 'application/json' });
   const put = (body, code) => realFetch(`${base}/api/me/draft`, { method: 'PUT', headers: hdr(code), body: JSON.stringify(body) });
   const load = code => realFetch(`${base}/api/me/draft`, { headers: code ? { 'x-sync-code': code } : {} });
   const doc = { settings: { teams: 8, rounds: 13, slot: 7 }, teamNames: { 7: 'Jared' }, picks: ['espn:1', 'espn:2'], updatedAt: 1000 };
   assert.equal((await put(doc)).status, 200);
-  // No Yahoo login needed, and the code is case/space tolerant
-  const got = await (await load(' LASER-ABCD-EFGH-JKMN ')).json();
+  // No Yahoo login needed, and case, spaces and dashes don't matter
+  const got = await (await load(' k7m 2xq ')).json();
   assert.equal(got.configured, true);
   assert.deepEqual(got.doc.picks, ['espn:1', 'espn:2']);
   assert.equal(got.doc.teamNames['7'], 'Jared');
-  assert.ok([...KV.keys()].every(k => !k.includes(CODE)));
+  assert.ok([...KV.keys()].every(k => !k.toLowerCase().includes('k7m')));
   const stale = await (await put({ ...doc, picks: [], updatedAt: 500 })).json();
   assert.equal(stale.stale, true);
   assert.deepEqual(stale.doc.picks, ['espn:1', 'espn:2']);
   assert.equal((await load()).status, 401);
-  assert.equal((await load('short')).status, 401);
-  assert.equal((await (await load('laser-zzzz-zzzz-zzzz')).json()).doc, null);
+  assert.equal((await load('ab-12')).status, 401);
+  assert.equal((await (await load('ZZZ-ZZZ')).json()).doc, null);
   assert.equal((await put({ picks: 'x', updatedAt: 1 })).status, 400);
 });

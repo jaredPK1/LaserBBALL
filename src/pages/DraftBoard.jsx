@@ -123,24 +123,25 @@ export default function DraftBoard({ authed }) {
 
   const adoptCode = code => { setSync('connecting'); setSyncCode(writeSyncCode(code)); };
   const setupSync = () => {
+    const tooShort = c => syncNorm(c).length < 6;
     if (syncCode) {
-      const next = window.prompt('Your sync code. Enter it on your other devices to see this draft there.\n\nTo join another device instead, replace it with that device\'s code.', syncCode);
-      if (next == null || next.trim().toLowerCase() === syncCode) return;
-      if (next.trim().length < 16) { window.alert('That code is too short. Copy the whole code from your other device.'); return; }
+      const next = window.prompt('Your sync code. Enter it on your other devices to see this draft there.\n\nTo join another device instead, type that device\'s code.', syncCode);
+      if (next == null || syncNorm(next) === syncNorm(syncCode)) return;
+      if (tooShort(next)) { window.alert('Codes need at least 6 letters or numbers.'); return; }
       joining.current = true;
       adoptCode(next);
       return;
     }
-    const entered = window.prompt('Already using sync on another device? Paste its sync code here.\n\nFirst device? Leave this blank and tap OK to create a code.', '');
+    const entered = window.prompt('Type a sync code you\'ll remember (6+ letters or numbers), or the code from your other device.\n\nLeave it blank for a random one.', '');
     if (entered == null) return;
     if (entered.trim()) {
-      if (entered.trim().length < 16) { window.alert('That code is too short. Copy the whole code from your other device.'); return; }
-      joining.current = true;
+      if (tooShort(entered)) { window.alert('Codes need at least 6 letters or numbers.'); return; }
+      joining.current = true; // if the code already has a draft, load it
       adoptCode(entered);
     } else {
       const code = newSyncCode();
       adoptCode(code);
-      window.alert(`Your sync code:\n\n${code}\n\nOn your other devices, open the draft board, tap the sync button and paste this code. Tap the sync button any time to see it again. Keep it private: anyone with the code can see and change your draft.`);
+      window.alert(`Your sync code: ${code}\n\nOn your other devices, tap the sync button and type this code. Tap the sync button any time to see it again.`);
     }
   };
 
@@ -725,16 +726,16 @@ const SYNC_STORE = 'hi_sync_code';
 function readSyncCode() {
   try { return localStorage.getItem(SYNC_STORE) || ''; } catch { return ''; }
 }
+const syncNorm = c => c.toLowerCase().replace(/[^a-z0-9]/g, '');
 function writeSyncCode(code) {
-  const c = code.trim().toLowerCase();
+  const c = code.trim();
   try { localStorage.setItem(SYNC_STORE, c); } catch { /* private mode: code lasts this visit */ }
   return c;
 }
 function newSyncCode() {
-  const abc = '23456789abcdefghjkmnpqrstuvwxyz'; // no 0/o, 1/l/i lookalikes
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  const chars = [...bytes].map(b => abc[b % abc.length]).join('');
-  return `laser-${chars.match(/.{4}/g).join('-')}`;
+  const abc = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // no 0/O, 1/I/L lookalikes
+  const chars = [...crypto.getRandomValues(new Uint8Array(6))].map(b => abc[b % abc.length]).join('');
+  return `${chars.slice(0, 3)}-${chars.slice(3)}`;
 }
 
 function SyncPill({ status, onClick }) {

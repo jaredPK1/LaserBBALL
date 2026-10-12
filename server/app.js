@@ -39,12 +39,12 @@ app.get('/api/debug/yahoo', wrap(debugYahoo));
 
 // ── Cross-device draft sync, keyed to a private sync code ──────────────────
 // Not tied to Yahoo login: Yahoo no longer reliably returns an account id, and
-// every Yahoo login emails the user. The code is long and random, so knowing it
-// is the access check; only its hash is stored.
+// every Yahoo login emails the user. Codes are short enough to type (6+ letters
+// or digits; dashes, spaces and case ignored); only their hash is stored.
 const SYNC_FIELDS = ['settings', 'teamNames', 'teamManagers', 'picks', 'mock', 'source'];
 function requireUser(req) {
-  const code = String(req.get('x-sync-code') || '').trim().toLowerCase();
-  if (code.length < 16) throw Object.assign(new Error('Enter your sync code to sync'), { status: 401 });
+  const code = String(req.get('x-sync-code') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (code.length < 6) throw Object.assign(new Error('Enter your sync code to sync'), { status: 401 });
   return `draft:c:${crypto.createHash('sha256').update(code).digest('hex')}`;
 }
 app.get('/api/me/draft', wrap(async req => {
