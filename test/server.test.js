@@ -262,19 +262,24 @@ test('sessions from a different Yahoo app are treated as logged out', async () =
   assert.equal(ok.calls['users;use_login=1/games;game_keys=nba/leagues/teams'].status, 200);
 });
 
-test('profile-linked draft sync: save, load, stale guard, login required', async () => {
-  const put = (body, c = cookie) => realFetch(`${base}/api/me/draft`, { method: 'PUT', headers: { cookie: c, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+test('draft sync by private code: save, load, stale guard, code required', async () => {
+  const CODE = 'laser-abcd-efgh-jkmn';
+  const hdr = (code = CODE) => ({ 'x-sync-code': code, 'content-type': 'application/json' });
+  const put = (body, code) => realFetch(`${base}/api/me/draft`, { method: 'PUT', headers: hdr(code), body: JSON.stringify(body) });
+  const load = code => realFetch(`${base}/api/me/draft`, { headers: code ? { 'x-sync-code': code } : {} });
   const doc = { settings: { teams: 8, rounds: 13, slot: 7 }, teamNames: { 7: 'Jared' }, picks: ['espn:1', 'espn:2'], updatedAt: 1000 };
   assert.equal((await put(doc)).status, 200);
-  const got = await (await get('/api/me/draft')).json();
+  // No Yahoo login needed, and the code is case/space tolerant
+  const got = await (await load(' LASER-ABCD-EFGH-JKMN ')).json();
   assert.equal(got.configured, true);
   assert.deepEqual(got.doc.picks, ['espn:1', 'espn:2']);
   assert.equal(got.doc.teamNames['7'], 'Jared');
+  assert.ok([...KV.keys()].every(k => !k.includes(CODE)));
   const stale = await (await put({ ...doc, picks: [], updatedAt: 500 })).json();
   assert.equal(stale.stale, true);
   assert.deepEqual(stale.doc.picks, ['espn:1', 'espn:2']);
-  assert.equal((await get('/api/me/draft', false)).status, 401);
+  assert.equal((await load()).status, 401);
+  assert.equal((await load('short')).status, 401);
+  assert.equal((await (await load('laser-zzzz-zzzz-zzzz')).json()).doc, null);
   assert.equal((await put({ picks: 'x', updatedAt: 1 })).status, 400);
-  const noGuid = `hi_sess=${seal({ access_token: 'AT', refresh_token: 'RT', expires_at: Date.now() + 3e6, client: clientTag() })}`;
-  assert.equal((await realFetch(`${base}/api/me/draft`, { headers: { cookie: noGuid } })).status, 401);
 });

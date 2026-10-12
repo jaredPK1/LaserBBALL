@@ -302,11 +302,3 @@ export async function debugYahoo(req, res) {
   }
   return out;
 }
-
-// Stable per-user id for server-side storage: your Yahoo account guid, captured
-// at login. Sessions from before guid capture must log in again to sync
-// (a per-device fallback would silently give each device its own copy).
-export function userKey(req) {
-  const s = currentSession(req);
-  return s?.guid ? `y:${s.guid}` : null;
-}

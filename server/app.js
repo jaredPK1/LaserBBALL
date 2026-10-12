@@ -1,6 +1,7 @@
 // Hoop Intel API. Runs as a Vercel function (api/index.js) and locally (server/dev.js).
+import crypto from 'node:crypto';
 import express from 'express';
-import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo, userKey, warmToken } from './yahoo.js';
+import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo, warmToken } from './yahoo.js';
 import { storeConfigured, getJson, setJson } from './store.js';
 import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } from './nba.js';
 import { gameNight } from './gamenight.js';
@@ -36,12 +37,15 @@ app.get('/api/auth/status', wrap(req => ({ authed: isAuthed(req) })));
 app.post('/api/auth/logout', wrap(logout));
 app.get('/api/debug/yahoo', wrap(debugYahoo));
 
-// ── Profile-linked draft sync (keyed to your Yahoo login) ──────────────────
+// ── Cross-device draft sync, keyed to a private sync code ──────────────────
+// Not tied to Yahoo login: Yahoo no longer reliably returns an account id, and
+// every Yahoo login emails the user. The code is long and random, so knowing it
+// is the access check; only its hash is stored.
 const SYNC_FIELDS = ['settings', 'teamNames', 'teamManagers', 'picks', 'mock', 'source'];
 function requireUser(req) {
-  const k = userKey(req);
-  if (!k) throw Object.assign(new Error('Log in with Yahoo (again) to sync'), { status: 401 });
-  return `draft:${k}`;
+  const code = String(req.get('x-sync-code') || '').trim().toLowerCase();
+  if (code.length < 16) throw Object.assign(new Error('Enter your sync code to sync'), { status: 401 });
+  return `draft:c:${crypto.createHash('sha256').update(code).digest('hex')}`;
 }
 app.get('/api/me/draft', wrap(async req => {
   if (!storeConfigured()) return { configured: false };

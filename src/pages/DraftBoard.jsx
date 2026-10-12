@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { getDraftPool, getEspnPool, startAuth } from '../api/yahoo';
+import { getDraftPool, getEspnPool } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import {
   CATS, DEFAULT_SETTINGS, computeValues, teamOnClock, picksForSlot, slotFill,
@@ -53,9 +53,15 @@ export default function DraftBoard({ authed }) {
     try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* storage full/blocked */ }
   }, [state]);
 
-  // ── Profile-linked sync: the draft lives on the server under your Yahoo login,
-  // so every logged-in device shows the same draft (polls every 10s).
-  const [sync, setSync] = useState(authed ? 'connecting' : 'off');
+  // ── Cross-device sync: the draft lives on the server under a private sync
+  // code you enter once per device, so every device shows the same draft
+  // (polls every 10s). Not tied to Yahoo login.
+  const [syncCode, setSyncCode] = useState(readSyncCode);
+  const codeRef = useRef(syncCode);
+  codeRef.current = syncCode;
+  const joining = useRef(false);
+  const [sync, setSync] = useState(syncCode ? 'connecting' : 'off');
+  const syncHeaders = () => ({ headers: { 'x-sync-code': codeRef.current } });
   const stateRef = useRef(state);
   stateRef.current = state;
   const syncSig = JSON.stringify({ settings: state.settings, teamNames: state.teamNames, teamManagers: state.teamManagers || {}, picks: state.picks, mock: !!state.mock });
@@ -78,7 +84,7 @@ export default function DraftBoard({ authed }) {
       const { data } = await axios.put('/api/me/draft', {
         settings: s.settings, teamNames: s.teamNames, teamManagers: s.teamManagers || {}, picks: s.picks,
         mock: !!s.mock, source: s.meta?.source || null, updatedAt,
-      });
+      }, syncHeaders());
       if (data.stale && data.doc) applyRemote(data.doc);
       setSync('synced');
     } catch (e) {
@@ -88,15 +94,19 @@ export default function DraftBoard({ authed }) {
 
   const pull = async initial => {
     try {
-      const { data } = await axios.get('/api/me/draft');
+      const { data } = await axios.get('/api/me/draft', syncHeaders());
       if (!data.configured) { setSync('unconfigured'); return; }
       const doc = data.doc;
       const local = stateRef.current;
-      if (doc && doc.updatedAt > (local.updatedAt || 0)) applyRemote(doc);
+      // Joining an existing code: that device's draft wins over this one's
+      const preferRemote = initial && joining.current;
+      joining.current = false;
+      if (doc && (preferRemote || doc.updatedAt > (local.updatedAt || 0))) applyRemote(doc);
       else if (initial && (!doc || (local.updatedAt || 0) > doc.updatedAt) && (local.picks.length || Object.keys(local.teamNames || {}).length)) {
         const t = local.updatedAt || Date.now();
         setState(s => ({ ...s, updatedAt: t }));
-        await push(t);
+        await push(t); // sets the status itself, including errors
+        return;
       }
       setSync('synced');
     } catch (e) {
@@ -105,18 +115,41 @@ export default function DraftBoard({ authed }) {
   };
 
   useEffect(() => {
-    if (!authed) return;
+    if (!syncCode) return;
     pull(true);
     const id = setInterval(() => { if (document.visibilityState === 'visible') pull(false); }, 10000);
     return () => clearInterval(id);
-  }, [authed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [syncCode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const adoptCode = code => { setSync('connecting'); setSyncCode(writeSyncCode(code)); };
+  const setupSync = () => {
+    if (syncCode) {
+      const next = window.prompt('Your sync code. Enter it on your other devices to see this draft there.\n\nTo join another device instead, replace it with that device\'s code.', syncCode);
+      if (next == null || next.trim().toLowerCase() === syncCode) return;
+      if (next.trim().length < 16) { window.alert('That code is too short. Copy the whole code from your other device.'); return; }
+      joining.current = true;
+      adoptCode(next);
+      return;
+    }
+    const entered = window.prompt('Already using sync on another device? Paste its sync code here.\n\nFirst device? Leave this blank and tap OK to create a code.', '');
+    if (entered == null) return;
+    if (entered.trim()) {
+      if (entered.trim().length < 16) { window.alert('That code is too short. Copy the whole code from your other device.'); return; }
+      joining.current = true;
+      adoptCode(entered);
+    } else {
+      const code = newSyncCode();
+      adoptCode(code);
+      window.alert(`Your sync code:\n\n${code}\n\nOn your other devices, open the draft board, tap the sync button and paste this code. Tap the sync button any time to see it again. Keep it private: anyone with the code can see and change your draft.`);
+    }
+  };
 
   // Local edits (not remote applies, not first render) are timestamped and pushed
   useEffect(() => {
     if (prevSig.current === null) { prevSig.current = syncSig; return; }
     if (syncSig === prevSig.current) return;
     prevSig.current = syncSig;
-    if (syncSig === remoteSig.current || !authed || sync === 'unconfigured') return;
+    if (syncSig === remoteSig.current || !syncCode || sync === 'unconfigured') return;
     const t = Date.now();
     setState(s => ({ ...s, updatedAt: t }));
     const timer = setTimeout(() => push(t), 400);
@@ -358,7 +391,7 @@ export default function DraftBoard({ authed }) {
           </>
         )}
         <div className="clock-actions">
-          <SyncPill status={sync} />
+          <SyncPill status={sync} onClick={setupSync} />
           {scouting.length === 0 && <span className="meta">Open League Intel once to get scouting notes here</span>}
           <button className="btn btn-ghost" onClick={undo} disabled={!picks.length}>Undo</button>
         </div>
@@ -688,19 +721,35 @@ function MyTeam({ players, slot, weights, myPickNums }) {
 }
 
 // Fast pick entry while following the room: likely picks as one-tap buttons + search
-function SyncPill({ status }) {
+const SYNC_STORE = 'hi_sync_code';
+function readSyncCode() {
+  try { return localStorage.getItem(SYNC_STORE) || ''; } catch { return ''; }
+}
+function writeSyncCode(code) {
+  const c = code.trim().toLowerCase();
+  try { localStorage.setItem(SYNC_STORE, c); } catch { /* private mode: code lasts this visit */ }
+  return c;
+}
+function newSyncCode() {
+  const abc = '23456789abcdefghjkmnpqrstuvwxyz'; // no 0/o, 1/l/i lookalikes
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const chars = [...bytes].map(b => abc[b % abc.length]).join('');
+  return `laser-${chars.match(/.{4}/g).join('-')}`;
+}
+
+function SyncPill({ status, onClick }) {
   const map = {
-    synced: ['☁ Synced', 'sync-ok', 'Saved to your account; open on any logged-in device'],
+    synced: ['☁ Synced', 'sync-ok', 'Saved to the cloud. Tap to see your sync code'],
     connecting: ['☁ Syncing…', 'sync-wait', ''],
-    login: ['☁ Log in to sync', 'sync-warn', 'Tap to log in with Yahoo'],
-    off: ['☁ Log in to sync', 'sync-warn', 'Tap to log in with Yahoo'],
+    login: ['☁ Check sync code', 'sync-warn', 'Tap to enter your sync code'],
+    off: ['☁ Set up sync', 'sync-warn', 'Tap to sync this draft across your devices'],
     unconfigured: ['☁ Sync not set up', 'sync-warn', 'Cloud storage isn’t connected on the server yet'],
-    error: ['☁ Sync error', 'sync-err', 'Couldn’t reach the server; your picks are still saved on this device'],
+    error: ['☁ Sync error', 'sync-err', 'Couldn’t reach the server; your picks are still saved on this device. Tap to see your sync code'],
   };
   const [label, cls, title] = map[status] || map.error;
-  const clickable = status === 'login' || status === 'off';
+  const clickable = status !== 'connecting' && status !== 'unconfigured';
   return (
-    <button className={`sync-pill ${cls}`} title={title} onClick={clickable ? startAuth : undefined} disabled={!clickable}>{label}</button>
+    <button className={`sync-pill ${cls}`} title={title} onClick={clickable ? onClick : undefined} disabled={!clickable}>{label}</button>
   );
 }
 
