@@ -51,8 +51,24 @@ function AppInner() {
           <Route path="/schedule" element={<ScheduleStrength />} />
           <Route path="*" element={<Navigate to={authed ? '/gamenight' : '/connect'} replace />} />
         </Routes>
+        <YahooAttribution />
       </main>
     </>
+  );
+}
+
+// Required by the Yahoo Fantasy Sports API terms on any screen using its data.
+// The official logo goes in public/yahoo-fantasy-logo.png exactly as Yahoo
+// provides it (no recoloring, resizing out of proportion, or effects).
+function YahooAttribution() {
+  const [logo, setLogo] = useState(true);
+  return (
+    <footer className="yahoo-attrib">
+      <a href="https://sports.yahoo.com/fantasy/" target="_blank" rel="noopener noreferrer">
+        {logo && <img src="/yahoo-fantasy-logo.png" alt="Yahoo Fantasy" onError={() => setLogo(false)} />}
+        <span>Fantasy data provided by Yahoo Fantasy</span>
+      </a>
+    </footer>
   );
 }
 

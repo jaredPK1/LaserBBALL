@@ -1,5 +1,4 @@
 // Hoop Intel API. Runs as a Vercel function (api/index.js) and locally (server/dev.js).
-import crypto from 'node:crypto';
 import express from 'express';
 import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myContext, debugYahoo, warmToken } from './yahoo.js';
 import { storeConfigured, getJson, setJson } from './store.js';
@@ -37,16 +36,11 @@ app.get('/api/auth/status', wrap(req => ({ authed: isAuthed(req) })));
 app.post('/api/auth/logout', wrap(logout));
 app.get('/api/debug/yahoo', wrap(debugYahoo));
 
-// ── Cross-device draft sync, keyed to a private sync code ──────────────────
-// Not tied to Yahoo login: Yahoo no longer reliably returns an account id, and
-// every Yahoo login emails the user. Codes are short enough to type (6+ letters
-// or digits; dashes, spaces and case ignored); only their hash is stored.
+// ── Cross-device draft sync ─────────────────────────────────────────────────
+// Single-user app by the owner's choice: one draft, shown on every device with
+// no login or code. Anyone with the URL can see and edit the draft board.
 const SYNC_FIELDS = ['settings', 'teamNames', 'teamManagers', 'picks', 'mock', 'source'];
-function requireUser(req) {
-  const code = String(req.get('x-sync-code') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (code.length < 6) throw Object.assign(new Error('Enter your sync code to sync'), { status: 401 });
-  return `draft:c:${crypto.createHash('sha256').update(code).digest('hex')}`;
-}
+const requireUser = () => 'draft:owner';
 app.get('/api/me/draft', wrap(async req => {
   if (!storeConfigured()) return { configured: false };
   const doc = await getJson(requireUser(req));

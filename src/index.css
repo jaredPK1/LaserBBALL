@@ -434,6 +434,12 @@ select.input-sm { width: auto; }
 .news-row { line-height: 1.4; }
 .sync-pill { border: 1px solid var(--border); background: var(--surface2); border-radius: 999px; padding: 4px 10px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text2); cursor: default; }
 .sync-pill.sync-ok { color: var(--green); border-color: rgba(34, 197, 94, 0.4); }
-.sync-pill.sync-warn { color: var(--gold); border-color: rgba(245, 158, 11, 0.4); cursor: pointer; }
+.sync-pill.sync-warn { color: var(--gold); border-color: rgba(245, 158, 11, 0.4); }
 .sync-pill.sync-err { color: var(--red); border-color: rgba(239, 68, 68, 0.4); }
 .sync-pill:disabled { opacity: 1; }
+
+/* Yahoo Fantasy API attribution (required by Yahoo's terms) */
+.yahoo-attrib { margin-top: 40px; padding: 16px 0 8px; border-top: 1px solid var(--border); font-size: 12px; }
+.yahoo-attrib a { display: inline-flex; align-items: center; gap: 8px; color: var(--text2); text-decoration: none; }
+.yahoo-attrib a:hover span { text-decoration: underline; }
+.yahoo-attrib img { height: 20px; width: auto; }
