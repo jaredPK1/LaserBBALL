@@ -111,8 +111,8 @@ export const getDraftPool = (season) =>
 export const getHistorySeasons = () =>
   apiCall(() => axios.get(`${BASE}/history/seasons`));
 
-export const getHistorySeason = (leagueKey) =>
-  apiCall(() => axios.get(`${BASE}/history/season/${encodeURIComponent(leagueKey)}`, { timeout: 90000 }));
+export const getHistorySeason = (leagueKey, fresh = false) =>
+  apiCall(() => axios.get(`${BASE}/history/season/${encodeURIComponent(leagueKey)}${fresh ? '?fresh=1' : ''}`, { timeout: 90000 }));
 
 export const getEspnPool = () =>
   axios.get(`${BASE}/draft/espn`, { timeout: 60000 });

@@ -224,7 +224,20 @@ app.get('/api/draft/sim', wrap(async req => {
   return { slot, teams: Number(req.query.teams) || 10, runs, engine, results: results.sort((a, b) => b.winPct - a.winPct) };
 }));
 app.get('/api/history/seasons', wrap(historySeasons));
-app.get('/api/history/season/:leagueKey', wrap(historySeason));
+// Finished seasons never change, so keep them in the cloud store: other devices
+// skip the slow Yahoo crawl, and the owner can analyze history server-side.
+// ?fresh=1 re-reads Yahoo (and refreshes the stored copy).
+app.get('/api/history/season/:leagueKey', wrap(async (req, res) => {
+  if (!isAuthed(req)) throw Object.assign(new Error('Not connected to Yahoo'), { status: 401 });
+  const key = `hist:${req.params.leagueKey}`;
+  if (storeConfigured() && !req.query.fresh) {
+    const cached = await getJson(key).catch(() => null);
+    if (cached) return cached;
+  }
+  const season = await historySeason(req, res);
+  if (season?.isFinished && storeConfigured()) await setJson(key, season).catch(e => console.error('history cache:', e.message));
+  return season;
+}));
 
 app.use('/api', (req, res) => res.status(404).json({ error: `No route ${req.method} ${req.path}` }));
 

@@ -30,7 +30,7 @@ export default function LeagueIntel() {
         if (!d) {
           setProgress(`Loading ${seasonLabel(s.season)} season (${i + 1}/${past.length})… draft, standings, every weekly matchup`);
           try {
-            d = (await getHistorySeason(s.leagueKey)).data;
+            d = (await getHistorySeason(s.leagueKey, force)).data;
             if (d.isFinished) writeCache(s.leagueKey, d);
           } catch (e) {
             d = { leagueKey: s.leagueKey, season: s.season, error: e.response?.data?.error || e.message };

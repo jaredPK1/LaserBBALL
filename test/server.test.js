@@ -253,6 +253,14 @@ test('history walks the renewal chain and parses a past season', async () => {
   assert.equal(s.weeks[1].matchups[0].isPlayoffs, true);
 
   assert.equal((await get('/api/history/season/bad;key')).status, 400);
+
+  // Finished seasons are kept in the cloud store and served from it (login still required)
+  assert.equal(s.isFinished, true);
+  assert.equal(KV.get('hist:454.l.777').season, 2025);
+  KV.get('hist:454.l.777').marker = 'cached';
+  assert.equal((await (await get('/api/history/season/454.l.777')).json()).marker, 'cached');
+  assert.equal((await (await get('/api/history/season/454.l.777?fresh=1')).json()).marker, undefined);
+  assert.equal((await get('/api/history/season/454.l.777', false)).status, 401);
 });
 
 test('sessions from a different Yahoo app are treated as logged out', async () => {
