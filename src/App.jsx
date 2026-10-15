@@ -13,9 +13,10 @@ import GameNight from './pages/GameNight';
 import LeagueIntel from './pages/LeagueIntel';
 import Today from './pages/Today';
 import Connect from './pages/Connect';
+import Settings from './pages/Settings';
 
 // The draft board works without Yahoo (CSV import / cached pool), so it's never gated.
-const PUBLIC = new Set(['/connect', '/draft']);
+const PUBLIC = new Set(['/connect', '/draft', '/settings']);
 
 function AppInner() {
   const [authed, setAuthed] = useState(null);
@@ -31,7 +32,7 @@ function AppInner() {
     return <Navigate to="/connect" replace />;
   }
 
-  const showNav = authed || location.pathname === '/draft';
+  const showNav = authed || location.pathname === '/draft' || location.pathname === '/settings';
 
   return (
     <>
@@ -49,6 +50,7 @@ function AppInner() {
           <Route path="/draft" element={<DraftBoard authed={authed} />} />
           <Route path="/intel" element={<LeagueIntel />} />
           <Route path="/schedule" element={<ScheduleStrength />} />
+          <Route path="/settings" element={<Settings authed={authed} />} />
           <Route path="*" element={<Navigate to={authed ? '/gamenight' : '/connect'} replace />} />
         </Routes>
         <YahooAttribution />

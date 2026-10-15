@@ -147,6 +147,9 @@ test('auth status + redirect + 401 when not connected', async () => {
   assert.equal(loc.searchParams.get('client_id'), 'cid');
   assert.equal(loc.searchParams.get('scope'), 'fspt-r');
   assert.match(loc.searchParams.get('redirect_uri'), /\/api\/auth\/callback$/);
+  assert.equal(loc.searchParams.get('prompt'), null);
+  const sw = new URL((await get('/api/auth?switch=1', false)).headers.get('location'));
+  assert.equal(sw.searchParams.get('prompt'), 'login');
   assert.equal((await get('/api/leagues', false)).status, 401);
   assert.equal((await get('/api/nope')).status, 404);
 });

@@ -443,3 +443,15 @@ select.input-sm { width: auto; }
 .yahoo-attrib a { display: inline-flex; align-items: center; gap: 8px; color: var(--text2); text-decoration: none; }
 .yahoo-attrib a:hover span { text-decoration: underline; }
 .yahoo-attrib img { height: 20px; width: auto; }
+
+/* Settings */
+.settings-verdict { font-weight: 600; margin: 6px 0; }
+.settings-ok { color: var(--green); }
+.settings-warn { color: var(--gold); }
+.settings-err { color: var(--red); }
+.settings-note { color: var(--text2); font-size: 14px; margin: 4px 0 12px; line-height: 1.5; }
+.settings-leagues { list-style: none; padding: 0; margin: 8px 0 12px; }
+.settings-leagues li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.settings-steps { padding-left: 20px; margin: 0 0 12px; }
+.settings-steps li { margin-bottom: 14px; line-height: 1.5; font-size: 14px; }
+.settings-steps li > div { margin-top: 6px; }

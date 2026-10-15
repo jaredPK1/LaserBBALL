@@ -18,9 +18,15 @@ export const checkAuth = async () => {
 export const isAuthenticated = () => !!authed;
 
 // Return to the page login started from (e.g. the draft board), not the dashboard
-export const startAuth = () => {
-  window.location.href = `${BASE}/auth?next=${encodeURIComponent(window.location.pathname)}`;
+// switchAccount asks Yahoo to show its sign-in screen instead of reusing the
+// account the browser is already signed into
+export const startAuth = (opts) => {
+  const sw = opts?.switchAccount ? '&switch=1' : '';
+  window.location.href = `${BASE}/auth?next=${encodeURIComponent(window.location.pathname)}${sw}`;
 };
+
+export const getYahooCheck = () => axios.get(`${BASE}/debug/yahoo`);
+export const getHealth = () => axios.get(`${BASE}/health`);
 
 export const clearTokens = async () => {
   await axios.post(`${BASE}/auth/logout`).catch(() => {});

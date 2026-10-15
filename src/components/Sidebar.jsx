@@ -27,6 +27,12 @@ const navItems = [
       { icon: '\u{1F4C5}', label: 'Schedule', path: '/schedule' },
     ],
   },
+  {
+    section: 'APP',
+    items: [
+      { icon: '\u{2699}\u{FE0F}', label: 'Settings', path: '/settings' },
+    ],
+  },
 ];
 
 export default function Sidebar({ authed }) {

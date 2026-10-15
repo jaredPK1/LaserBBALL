@@ -53,6 +53,7 @@ export function authRedirect(req, res) {
     scope: process.env.YAHOO_SCOPE || 'fspt-r',
     state,
   });
+  if (req.query.switch) params.set('prompt', 'login');
   res.redirect(`${AUTH_URL}?${params}`);
 }
 
