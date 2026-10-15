@@ -248,8 +248,19 @@ export async function myContext(req, res) {
       leagues.push({ info, teams });
     }
   }
-  if (!leagues.length) throw Object.assign(new Error('No Yahoo NBA league found for this account this season'), { status: 404 });
   const wanted = process.env.LEAGUE_ID;
+  if (!leagues.length && wanted) {
+    // Not listed under this login: try the league directly (works if the login
+    // can see it, e.g. listing lag), else explain what this account does have
+    const direct = await yget(req, res, `league/nba.l.${wanted}/teams`).catch(() => null);
+    const l = direct && direct.fantasy_content?.league;
+    if (l) leagues.push({ info: merge(l[0]), teams: each(merge(l.slice(1)).teams, 'team').map(parseTeamInfo) });
+  }
+  if (!leagues.length) {
+    const others = await nbaLeaguesAllSeasons(req, res).catch(() => []);
+    const seen = others.length ? ` This Yahoo login has: ${others.map(o => `${o.name} (${o.season})`).join(', ')}.` : ' This Yahoo login has no NBA leagues in any season.';
+    throw Object.assign(new Error(`No ${wanted ? `league ${wanted}` : 'NBA league'} found for this Yahoo login this season.${seen} You may be signed into a different Yahoo account than the one in your league.`), { status: 404 });
+  }
   const league = leagues.find(l => String(l.info.league_id) === String(wanted)) || leagues[0];
   const mine = league.teams.find(t => t.mine);
   return {
@@ -263,6 +274,21 @@ export async function myContext(req, res) {
     teamName: mine?.name || 'My Team',
     raw: data,
   };
+}
+
+// Every NBA league this login belongs to, any season (names and keys only)
+async function nbaLeaguesAllSeasons(req, res) {
+  const data = await yget(req, res, 'users;use_login=1/games;game_codes=nba/leagues');
+  const user = merge(data.fantasy_content.users['0'].user);
+  const out = [];
+  for (const g of each(user.games, 'game')) {
+    const gm = merge(g);
+    for (const l of each(gm.leagues, 'league')) {
+      const info = merge(l);
+      out.push({ season: gm.season, name: info.name, leagueId: info.league_id, leagueKey: info.league_key });
+    }
+  }
+  return out;
 }
 
 // Diagnostics for authorization problems: session facts + which calls Yahoo refuses.
@@ -288,6 +314,7 @@ export async function debugYahoo(req, res) {
     'users;use_login=1/games;game_keys=nba/leagues/teams',
     ...(league ? [`league/nba.l.${league}`] : []),
   ];
+  try { out.nbaLeagues = await nbaLeaguesAllSeasons(req, res); } catch (e) { out.nbaLeagues = { error: e.message.slice(0, 200) }; }
   for (const p of paths) {
     try {
       const token = await accessToken(req, res);
