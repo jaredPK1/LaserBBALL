@@ -13,6 +13,7 @@ const navItems = [
     section: 'GAME DAY',
     items: [
       { icon: '\u{1F534}', label: 'Game Night', path: '/gamenight' },
+      { icon: '\u{1F4C8}', label: 'This Week', path: '/week' },
       { icon: '\u{1F3C0}', label: 'Matchup', path: '/matchup' },
       { icon: '\u{1F9E0}', label: 'Game Plan', path: '/gameplan' },
       { icon: '\u{1F4C6}', label: 'Today', path: '/today' },

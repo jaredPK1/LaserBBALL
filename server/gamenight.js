@@ -63,14 +63,14 @@ function closeness(cat, a, b) {
   return Math.abs(a - b) / big <= 0.08 || Math.abs(a - b) <= 2;
 }
 
-async function roster(req, res, teamKey, date) {
+export async function roster(req, res, teamKey, date) {
   const data = await yget(req, res, `team/${teamKey}/roster;date=${date}/players/stats;type=average_season`);
   const team = data.fantasy_content.team;
   const r = merge(team.slice(1)).roster;
   return each(r?.['0']?.players || r?.players, 'player').map(parsePlayer);
 }
 
-async function weekBounds(req, res, week) {
+export async function weekBounds(req, res, week) {
   try {
     const data = await yget(req, res, 'game/nba/game_weeks');
     const g = merge(data.fantasy_content.game);

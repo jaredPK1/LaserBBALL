@@ -4,6 +4,7 @@ import { authRedirect, handleCallback, logout, isAuthed, yget, merge, each, myCo
 import { storeConfigured, getJson, setJson } from './store.js';
 import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } from './nba.js';
 import { gameNight } from './gamenight.js';
+import { weekProjection, weekStreamers } from './weekly.js';
 import { draftPool } from './draft.js';
 import { espnDraftPool, loadPool } from './espn.js';
 import { evaluateStrategy, STRATEGIES, simulateSeason } from '../src/draft/sim.js';
@@ -170,6 +171,8 @@ app.get('/api/schedule/weekly', wrap(async (req, res) => {
 // ── Live / features ─────────────────────────────────────────────────────────
 app.get('/api/nba/scoreboard', wrap(() => getScoreboard()));
 app.get('/api/gamenight', wrap(gameNight));
+app.get('/api/week', wrap(weekProjection));
+app.get('/api/week/streamers', wrap(weekStreamers));
 app.get('/api/draft/pool', wrap(draftPool));
 app.get('/api/draft/espn', wrap(espnDraftPool));
 // Grade real rosters: match names to the ESPN pool, then simulate many seasons (all-play H2H 9-cat).

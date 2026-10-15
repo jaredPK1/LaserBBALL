@@ -455,3 +455,20 @@ select.input-sm { width: auto; }
 .settings-steps { padding-left: 20px; margin: 0 0 12px; }
 .settings-steps li { margin-bottom: 14px; line-height: 1.5; font-size: 14px; }
 .settings-steps li > div { margin-top: 6px; }
+
+/* This Week */
+.tw-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.tw-big { font-family: 'Bebas Neue', sans-serif; font-size: 48px; line-height: 1; }
+.tw-big span { font-size: 22px; color: var(--text2); }
+.tw-focus .tag { margin-right: 6px; }
+.tw-odds { white-space: nowrap; }
+.tw-bar { display: block; width: 100%; max-width: 120px; height: 4px; background: var(--surface2); border-radius: 2px; margin: 4px 0 0 auto; overflow: hidden; }
+.tw-bar i { display: block; height: 100%; background: var(--accent); }
+.tw-streams { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.tw-stream { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+.tw-stream.dim { opacity: 0.55; }
+.tw-srow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tw-rank { font-family: 'DM Mono', monospace; color: var(--text2); width: 18px; }
+.tw-gain { margin-left: auto; font-weight: 700; color: var(--green); font-family: 'DM Mono', monospace; }
+.tw-sline { margin: 4px 0; }
+.tw-stream .tag { margin-right: 4px; }

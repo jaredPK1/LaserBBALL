@@ -35,3 +35,9 @@ export async function setJson(key, value) {
     body: JSON.stringify({ key, doc: value, updated_at: new Date().toISOString() }),
   });
 }
+
+// All documents whose key starts with prefix (e.g. 'hist:')
+export async function listJson(prefix) {
+  const rows = await rest(`${TABLE}?key=like.${encodeURIComponent(prefix)}*&select=key,doc`);
+  return (rows || []).map(r => ({ key: r.key, doc: r.doc }));
+}

@@ -108,7 +108,12 @@ before(async () => {
     if (url.startsWith('https://sb.example.test/rest/v1/laserbball_draft_sync')) {
       if (opts?.headers?.apikey !== 'sb_secret_test') return new Response('{"message":"bad key"}', { status: 401 });
       if ((opts?.method || 'GET') === 'GET') {
-        const key = decodeURIComponent(new URL(url).searchParams.get('key').replace(/^eq\./, ''));
+        const q = decodeURIComponent(new URL(url).searchParams.get('key'));
+        if (q.startsWith('like.')) {
+          const prefix = q.slice(5).replace(/\*$/, '');
+          return json([...KV].filter(([k]) => k.startsWith(prefix)).map(([key, doc]) => ({ key, doc })));
+        }
+        const key = q.replace(/^eq\./, '');
         return json(KV.has(key) ? [{ doc: KV.get(key) }] : []);
       }
       const row = JSON.parse(opts.body);
@@ -286,4 +291,40 @@ test('draft sync: one shared draft, no login or code needed', async () => {
   assert.equal(stale.stale, true);
   assert.deepEqual(stale.doc.picks, ['espn:1', 'espn:2']);
   assert.equal((await put({ picks: 'x', updatedAt: 1 })).status, 400);
+});
+
+test('this week: category odds, opponent scouting from history, streamers', async () => {
+  // Opponent's manager (matches a manager in the stored 2025 history)
+  const oppNode = FIX['team/466.l.33458.t.1/matchups;weeks=3'].fantasy_content.team[1].matchups['0'].matchup['0'].teams['1'].team;
+  oppNode[0].push({ managers: [{ manager: { nickname: 'old them' } }] });
+  const fa = (key, name, team, pos, pts, reb) => player(key, name, team, pos, '', { ...avg, '12': String(pts), '15': String(reb) });
+  const faList = players => ({ fantasy_content: { league: [{ league_key: '466.l.33458' }, { players: Object.assign({ count: players.length }, ...players.map((p, i) => ({ [i]: p }))) }] } });
+  const S = 'stats;type=average_season';
+  FIX[`league/466.l.33458/players;status=A;sort=OR;count=25/${S}`] = faList([fa('f1', 'Lakers Big', 'LAL', 'C', 12, 11), fa('f2', 'Idle Guard', 'NY', 'PG', 18, 3)]);
+  FIX[`league/466.l.33458/players;status=A;position=C;sort=OR;count=25/${S}`] = faList([fa('f1', 'Lakers Big', 'LAL', 'C', 12, 11)]);
+
+  const r = await get(`/api/week?week=3&from=${today}`);
+  const d = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.categories.length, 9);
+  assert.ok(d.expectedWins > 0 && d.expectedWins < 9);
+  const pts = d.categories.find(c => c.name === 'PTS');
+  assert.equal(pts.mineNow, 300);
+  assert.ok(pts.mineEnd > 300, 'my BOS players play today');
+  assert.ok(d.categories.every(c => c.winProb >= 0 && c.winProb <= 1));
+  const to = d.categories.find(c => c.name === 'TO');
+  assert.equal(to.low, true);
+  assert.equal(d.opp.manager, 'old them');
+  assert.ok(d.scouting && d.scouting.seasons.length === 1, JSON.stringify(d.scouting));
+  assert.equal(d.scouting.catWin['FT%'], 1); // won FT% in the stored regular-season week
+
+  const s = await (await get(`/api/week/streamers?week=3&from=${today}`)).json();
+  assert.ok(Array.isArray(s.streamers), JSON.stringify(s));
+  assert.equal(s.considered, 2);
+  const big = s.streamers.find(x => x.name === 'Lakers Big');
+  assert.equal(big.gamesLeft, 1);             // LAL plays tomorrow; adds start tomorrow
+  const idle = s.streamers.find(x => x.name === 'Idle Guard');
+  assert.equal(idle.gamesLeft, 0);
+  assert.ok(big.gain > idle.gain);
+  assert.ok(s.drop && typeof s.drop.name === 'string');
 });
