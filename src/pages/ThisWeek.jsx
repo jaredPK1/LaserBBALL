@@ -123,9 +123,13 @@ export default function ThisWeek() {
           : !streams ? <p className="meta">Ranking free agents…</p> : (
             <>
               <p className="settings-note">
+                {streams.addsUsed != null && <><b>{streams.addsUsed} of {streams.addsLimit} adds used</b> this week. </>}
                 Ranked by how many extra category wins each one adds this week, playing from {dayLabel(streams.addsStartPlaying)}
-                {streams.drop ? <> if you drop <b>{streams.drop.name}</b> (your least useful player this week)</> : ''}. You get 4 adds a week.
+                {streams.drop ? <> if you drop <b>{streams.drop.name}</b>{streams.drop.rosRank ? ` (#${streams.drop.rosRank} rest of season)` : ''}</> : ''}.
               </p>
+              {streams.drop?.allKeepers && (
+                <p className="notice action">Everyone on your roster is worth keeping. Only make an add marked <b>Keeper</b>, or move an injured player to IL first.</p>
+              )}
               {streams.streamers.length === 0 && <p className="meta">No free agents with stats found.</p>}
               <div className="tw-streams">
                 {streams.streamers.map((p, i) => (
@@ -135,6 +139,7 @@ export default function ThisWeek() {
                       <b>{p.name}</b>
                       <span className="meta">{p.team} · {p.pos}</span>
                       {p.status && <span className="tag tag-gold">{p.status}</span>}
+                      {p.keeper ? <span className="tag tag-green">Keeper</span> : <span className="tag">1-week stream</span>}
                       <span className="tw-gain">{p.gain >= 0 ? '+' : ''}{p.gain.toFixed(2)} cats</span>
                     </div>
                     <div className="tw-sline meta">
@@ -147,6 +152,25 @@ export default function ThisWeek() {
                   </div>
                 ))}
               </div>
+              {streams.dropOptions?.length > 0 && (
+                <details className="tw-drops">
+                  <summary>Who can I drop?</summary>
+                  <p className="settings-note">Rest-of-season rank among all players for your build (assists punted). Top {8 * 13 + 6} = worth keeping in an 8-team league.</p>
+                  <table className="gn-cats">
+                    <thead><tr><th>Player</th><th>Advice</th><th>Season rank</th><th>This week</th></tr></thead>
+                    <tbody>
+                      {streams.dropOptions.map(o => (
+                        <tr key={o.name}>
+                          <td className="stat">{o.name}{o.status ? ` (${o.status})` : ''}</td>
+                          <td className="stat"><span className={`tag ${o.advice === 'Droppable' ? 'tag-gold' : o.advice === 'Move to IL' ? 'tag-red' : 'tag-green'}`}>{o.advice}</span></td>
+                          <td className="stat">{o.rosRank ? `#${o.rosRank}` : '–'}</td>
+                          <td className="stat">−{o.weekCost.toFixed(2)} cats</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
               <p className="meta">Checked {streams.considered} free agents: the top overall plus the best available centers and power forwards.</p>
             </>
           )}

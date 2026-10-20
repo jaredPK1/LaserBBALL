@@ -472,3 +472,5 @@ select.input-sm { width: auto; }
 .tw-gain { margin-left: auto; font-weight: 700; color: var(--green); font-family: 'DM Mono', monospace; }
 .tw-sline { margin: 4px 0; }
 .tw-stream .tag { margin-right: 4px; }
+.tw-drops { margin: 4px 0 12px; }
+.tw-drops summary { cursor: pointer; font-weight: 600; padding: 6px 0; }

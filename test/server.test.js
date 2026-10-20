@@ -97,6 +97,17 @@ const ESPN = {
   ] } },
 };
 
+// ESPN fantasy pool: 115 solid players, plus our roster (Tatum strong, Bench Guy weak)
+const { espnSeason } = await import('../server/espn.js');
+const espnP = (id, name, line) => ({ player: { id, fullName: name, proTeamId: 0, eligibleSlots: [0], ownership: { averageDraftPosition: id },
+  stats: [{ id: `10${espnSeason()}`, averageStats: { 0: line.pts, 6: line.reb, 3: 3, 2: 1, 1: 0.5, 11: 1.5, 13: line.pts / 2.5, 14: line.pts / 1.25, 15: 2, 16: 2.5, 17: 1, 42: 70 } }] } });
+const ESPN_POOL = { players: [
+  espnP(1, 'Jayson Tatum', { pts: 27, reb: 8 }),
+  ...Array.from({ length: 115 }, (_, i) => espnP(i + 2, `Filler ${i}`, { pts: 20 - i / 10, reb: 6 })),
+  espnP(500, 'Bench Guy', { pts: 4, reb: 1 }),
+  espnP(501, 'Lakers Big', { pts: 12, reb: 11 }),
+] };
+
 let server, base, realFetch;
 before(async () => {
   realFetch = globalThis.fetch;
@@ -125,6 +136,7 @@ before(async () => {
       if (FIX[path]) return json(FIX[path]);
       return new Response(`no fixture: ${path}`, { status: 400 });
     }
+    if (url.includes('lm-api-reads.fantasy.espn.com')) return json(ESPN_POOL);
     if (url.includes('site.api.espn.com')) {
       const u = new URL(url);
       const team = /\/teams\/(\w+)\/schedule/.exec(u.pathname)?.[1];
@@ -326,5 +338,13 @@ test('this week: category odds, opponent scouting from history, streamers', asyn
   const idle = s.streamers.find(x => x.name === 'Idle Guard');
   assert.equal(idle.gamesLeft, 0);
   assert.ok(big.gain > idle.gain);
-  assert.ok(s.drop && typeof s.drop.name === 'string');
+  // Drop only someone not worth keeping all season; Tatum is protected
+  assert.equal(s.drop.name, 'Bench Guy', JSON.stringify(s.dropOptions));
+  assert.equal(s.drop.allKeepers, false);
+  const opt = Object.fromEntries(s.dropOptions.map(o => [o.name, o]));
+  assert.equal(opt['Jayson Tatum'].advice, 'Keep');
+  assert.equal(opt['Bench Guy'].advice, 'Droppable');
+  assert.ok(opt['Bench Guy'].rosRank > opt['Jayson Tatum'].rosRank);
+  assert.equal(big.keeper, true);              // better than Bench Guy long-term
+  assert.equal(s.addsLimit, 4);
 });

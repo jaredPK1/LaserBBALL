@@ -7,8 +7,14 @@ import { gamesBetween, etDate, addDays, nbaTeam, normName } from './nba.js';
 import { loadPool } from './espn.js';
 import { CATS, yahooLine, roster, weekBounds } from './gamenight.js';
 import { storeConfigured, listJson } from './store.js';
+import { computeValues } from '../src/draft/engine.js';
 
 const ACTIVE_SLOTS = 10;   // PG,SG,G,SF,PF,F,C,C,Util,Util
+const TEAMS = 8, ROUNDS = 13;
+// Rest-of-season values use your build: assists punted
+const ROS_WEIGHTS = { fg: 1, ft: 1, tpm: 1, pts: 1, reb: 1, ast: 0, stl: 1, blk: 1, to: 1 };
+// Anyone ranked inside this is a rostered-caliber player in an 8-team, 13-round league
+const KEEP_RANK = TEAMS * ROUNDS + 6;
 const IL_SLOTS = new Set(['IL', 'IL+', 'IL+LT', 'NA']);
 const OUT = new Set(['O', 'INJ', 'OUT', 'SUSP', 'NA']);
 const KEYS = ['fgm', 'fga', 'ftm', 'fta', 'tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'];
@@ -89,14 +95,21 @@ const verdict = p => (p >= 0.85 ? 'locked' : p >= 0.6 ? 'leaning' : p > 0.4 ? 's
 export const expectedWins = odds => odds.reduce((s, c) => s + c.winProb, 0);
 
 // ── Data ─────────────────────────────────────────────────────────────────────
+// ESPN projections by name, each with a rest-of-season value and rank
 async function espnRates() {
   try {
     const { players } = await loadPool({ query: { count: 500 } });
+    const valued = computeValues(players.filter(p => p.hasStats), { teams: TEAMS, rounds: ROUNDS, weights: ROS_WEIGHTS });
     const m = new Map();
-    for (const p of players) if (p.hasStats) m.set(normName(p.name), p);
+    for (const p of valued) m.set(normName(p.name), { ...p, rosValue: p.value, rosRank: p.valueRank });
     return m;
   } catch { return new Map(); }
 }
+
+const rosOf = (name, espn) => {
+  const e = espn.get(normName(name));
+  return e ? { rosValue: e.rosValue, rosRank: e.rosRank } : { rosValue: null, rosRank: null };
+};
 
 // Per-game rates: ESPN's projection (updated in-season), else Yahoo's season average
 function ratesFor(p, espn) {
@@ -230,6 +243,16 @@ export async function weekProjection(req, res) {
   };
 }
 
+// Adds made this week, from Yahoo's team metadata (null if Yahoo doesn't say)
+async function addsUsed(req, res, teamKey) {
+  try {
+    const data = await yget(req, res, `team/${teamKey}`);
+    const ra = merge(data.fantasy_content.team[0] || data.fantasy_content.team).roster_adds;
+    const v = Number(ra?.value);
+    return Number.isFinite(v) ? v : null;
+  } catch { return null; }
+}
+
 async function freeAgents(req, res, lk) {
   const STATS = 'stats;type=average_season';
   const paths = [
@@ -259,18 +282,28 @@ export async function weekStreamers(req, res) {
   // Adds take effect tomorrow; the dropped player still counts today
   const tomorrow = addDays(st.today, 1);
   const addFrom = st.startDay > tomorrow ? st.startDay : tomorrow;
-  const droppable = st.mine.filter(p => !IL_SLOTS.has(p.slot));
-  const dropCost = droppable.map(p => ({
-    p, cost: base - evalRoster(st.mine.map(x => (x.id === p.id ? { ...x, until: addDays(addFrom, -1) } : x))),
-  })).sort((a, b) => a.cost - b.cost);
-  const drop = dropCost[0]?.p || null;
+  // Who to drop: never someone worth keeping all season. Among droppable
+  // players, pick the lowest rest-of-season value; this week's cost is shown
+  // alongside. Injured players are better moved to IL than dropped.
+  const options = st.mine.filter(p => !IL_SLOTS.has(p.slot)).map(p => {
+    const ros = rosOf(p.name, st.espn);
+    const keeper = ros.rosRank == null || ros.rosRank <= KEEP_RANK;
+    return {
+      p, ...ros, keeper,
+      injured: OUT.has(p.status),
+      weekCost: base - evalRoster(st.mine.map(x => (x.id === p.id ? { ...x, until: addDays(addFrom, -1) } : x))),
+    };
+  }).sort((a, b) => (a.rosValue ?? Infinity) - (b.rosValue ?? Infinity));
+  const pool = options.filter(o => !o.keeper && !o.injured);
+  const pick = pool[0] || options.find(o => !o.injured) || null;
+  const drop = pick?.p || null;
   const withDrop = st.mine.map(x => (drop && x.id === drop.id ? { ...x, until: addDays(addFrom, -1) } : x));
 
   const fas = (await freeAgents(req, res, st.ctx.leagueKey))
     .filter(p => !OUT.has(p.status))
     .map(p => {
       const r = ratesFor(p, st.espn);
-      return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, status: p.status, rates: r.rates, src: r.src, avail: availability(p), from: addFrom };
+      return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, status: p.status, rates: r.rates, src: r.src, avail: availability(p), from: addFrom, ...rosOf(p.name, st.espn) };
     })
     .filter(p => p.src !== 'none');
 
@@ -287,13 +320,22 @@ export async function weekStreamers(req, res) {
         fgPct: fa.rates.fga ? fa.rates.fgm / fa.rates.fga : null, ftPct: fa.rates.fta ? fa.rates.ftm / fa.rates.fta : null },
       gain: after - base,
       catGain,
+      rosRank: fa.rosRank,
+      // Better than the player you'd drop for the rest of the season → keep him
+      keeper: fa.rosValue != null && (pick?.rosValue == null ? false : fa.rosValue > pick.rosValue),
     };
   }).sort((a, b) => b.gain - a.gain);
 
+  const adds = await addsUsed(req, res, st.ctx.teamKey);
   return {
     week: st.week, end: st.bounds.end, addsStartPlaying: addFrom,
     baseline: base,
-    drop: drop ? { name: drop.name, pos: drop.pos, cost: dropCost[0].cost } : null,
+    addsUsed: adds, addsLimit: 4,
+    drop: drop ? { name: drop.name, pos: drop.pos, rosRank: pick.rosRank, weekCost: pick.weekCost, allKeepers: !pool.length } : null,
+    dropOptions: options.map(o => ({
+      name: o.p.name, pos: o.p.pos, status: o.p.status, rosRank: o.rosRank, keeper: o.keeper, injured: o.injured, weekCost: o.weekCost,
+      advice: o.injured ? 'Move to IL' : o.keeper ? 'Keep' : 'Droppable',
+    })),
     streamers: ranked.slice(0, 15),
     considered: fas.length,
   };
