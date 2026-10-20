@@ -14,9 +14,9 @@ const TEAMS = 8, ROUNDS = 13;
 // Rest-of-season values use your build: assists punted
 const ROS_WEIGHTS = { fg: 1, ft: 1, tpm: 1, pts: 1, reb: 1, ast: 0, stl: 1, blk: 1, to: 1 };
 // Anyone ranked inside this is a rostered-caliber player in an 8-team, 13-round league
-const KEEP_RANK = TEAMS * ROUNDS + 6;
-const IL_SLOTS = new Set(['IL', 'IL+', 'IL+LT', 'NA']);
-const OUT = new Set(['O', 'INJ', 'OUT', 'SUSP', 'NA']);
+export const KEEP_RANK = TEAMS * ROUNDS + 6;
+export const IL_SLOTS = new Set(['IL', 'IL+', 'IL+LT', 'NA']);
+export const OUT = new Set(['O', 'INJ', 'OUT', 'SUSP', 'NA']);
 const KEYS = ['fgm', 'fga', 'ftm', 'fta', 'tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'];
 
 // ── Math ─────────────────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ export const phi = z => 0.5 * (1 + erf(z / Math.SQRT2));
 
 // Rough single-game spread: ~40% of the mean plus a Poisson floor, which keeps
 // low-volume stats like steals and blocks appropriately noisy
-const gameVar = m => (0.4 * m) ** 2 + m;
+export const gameVar = m => (0.4 * m) ** 2 + m;
 
 // Rank players for "who starts when more than 10 play tonight"
 const startValue = r => r.pts + 1.2 * r.reb + 1.5 * r.ast + 3 * r.stl + 3 * r.blk + r.tpm - r.to;
@@ -96,7 +96,7 @@ export const expectedWins = odds => odds.reduce((s, c) => s + c.winProb, 0);
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 // ESPN projections by name, each with a rest-of-season value and rank
-async function espnRates() {
+export async function espnRates() {
   try {
     const { players } = await loadPool({ query: { count: 500 } });
     const valued = computeValues(players.filter(p => p.hasStats), { teams: TEAMS, rounds: ROUNDS, weights: ROS_WEIGHTS });
@@ -106,20 +106,20 @@ async function espnRates() {
   } catch { return new Map(); }
 }
 
-const rosOf = (name, espn) => {
+export const rosOf = (name, espn) => {
   const e = espn.get(normName(name));
   return e ? { rosValue: e.rosValue, rosRank: e.rosRank } : { rosValue: null, rosRank: null };
 };
 
 // Per-game rates: ESPN's projection (updated in-season), else Yahoo's season average
-function ratesFor(p, espn) {
+export function ratesFor(p, espn) {
   const e = espn.get(normName(p.name));
   if (e) return { src: e.projected ? 'projection' : 'last season', rates: Object.fromEntries(KEYS.map(k => [k, e[k] || 0])) };
   const y = yahooLine(p.stats || {});
   return { src: y.pts > 0 ? 'season avg' : 'none', rates: Object.fromEntries(KEYS.map(k => [k, y[k] || 0])) };
 }
 
-const availability = (p) => (IL_SLOTS.has(p.slot) || OUT.has(p.status) ? 0 : p.status === 'GTD' || p.status === 'DTD' ? 0.6 : 1);
+export const availability = (p) => (IL_SLOTS.has(p.slot) || OUT.has(p.status) ? 0 : p.status === 'GTD' || p.status === 'DTD' ? 0.6 : 1);
 
 function datesBetween(a, b) {
   const out = [];
@@ -127,13 +127,13 @@ function datesBetween(a, b) {
   return out;
 }
 
-function teamGames(games) {
+export function teamGames(games) {
   const by = {};
   for (const g of games) for (const t of [g.home, g.away]) (by[t] ||= new Set()).add(g.date);
   return by;
 }
 
-const nick = teamNode => merge(teamNode?.[0] || [])?.managers?.[0]?.manager?.nickname || null;
+export const nick = teamNode => merge(teamNode?.[0] || [])?.managers?.[0]?.manager?.nickname || null;
 
 // Scouting from stored league history: each manager's category win rate (regular season)
 let histCache = null;
@@ -253,7 +253,7 @@ async function addsUsed(req, res, teamKey) {
   } catch { return null; }
 }
 
-async function freeAgents(req, res, lk) {
+export async function freeAgents(req, res, lk) {
   const STATS = 'stats;type=average_season';
   const paths = [
     `league/${lk}/players;status=A;sort=OR;count=25/${STATS}`,

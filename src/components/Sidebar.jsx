@@ -26,6 +26,8 @@ const navItems = [
       { icon: '\u{2694}️', label: 'Start / Sit', path: '/startsit' },
       { icon: '\u{1F4CB}', label: 'Waivers', path: '/waivers' },
       { icon: '\u{1F4C5}', label: 'Schedule', path: '/schedule' },
+      { icon: '\u{1F91D}', label: 'Trade', path: '/trade' },
+      { icon: '\u{1F3C6}', label: 'Playoffs', path: '/playoffs' },
     ],
   },
   {

@@ -114,6 +114,15 @@ export const getWeek = (week) =>
 export const getStreamers = (week) =>
   apiCall(() => axios.get(`${BASE}/week/streamers${week ? `?week=${week}` : ''}`, { timeout: 60000 }));
 
+export const getAlerts = () =>
+  apiCall(() => axios.get(`${BASE}/alerts`, { timeout: 60000 }));
+
+export const getPlayoffs = () =>
+  apiCall(() => axios.get(`${BASE}/playoffs`, { timeout: 60000 }));
+
+export const getTrade = (params = {}) =>
+  apiCall(() => axios.get(`${BASE}/trade`, { params, timeout: 60000 }));
+
 export const getHistorySeasons = () =>
   apiCall(() => axios.get(`${BASE}/history/seasons`));
 

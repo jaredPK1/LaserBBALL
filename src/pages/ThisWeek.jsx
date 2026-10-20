@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getWeek, getStreamers } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
+import AlertsCard from '../components/AlertsCard';
 
 const VERDICT = {
   locked: ['Locked', 'tag-green'],
@@ -32,6 +33,7 @@ export default function ThisWeek() {
     return (
       <div>
         <PageHeader title="This Week" />
+        <AlertsCard />
         <div className="error-state"><h3>Couldn’t load this week</h3><p>{error}</p></div>
       </div>
     );
@@ -57,6 +59,8 @@ export default function ThisWeek() {
         title="This Week"
         subtitle={`Week ${week.week} · ${dayLabel(week.start)} – ${dayLabel(week.end)} · vs ${week.opp?.name || 'no opponent'}`}
       />
+
+      <AlertsCard />
 
       <div className="tw-head card">
         <div>

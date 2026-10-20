@@ -37,7 +37,13 @@ const FIX = {
     '0': teamNode('466.l.33458.t.1', 'Me FC', true, { '9004003': '100/200', '5': '.500', '9007006': '40/50', '8': '.800', '10': '30', '12': '300', '15': '120', '16': '70', '17': '20', '18': '10', '19': '30' }),
     '1': teamNode('466.l.33458.t.2', 'Them', false, { '9004003': '90/200', '5': '.450', '9007006': '45/50', '8': '.900', '10': '31', '12': '280', '15': '130', '16': '60', '17': '15', '18': '12', '19': '25' }),
     count: 2 } } } }, count: 1 } }] } },
-  'game/nba/game_weeks': { fantasy_content: { game: [{ game_key: '466' }, { game_weeks: { '0': { game_week: { week: '3', start: addDays(today, -2), end: addDays(today, 4) } }, count: 1 } }] } },
+  'game/nba/game_weeks': { fantasy_content: { game: [{ game_key: '466' }, { game_weeks: {
+    '0': { game_week: { week: '3', start: addDays(today, -2), end: addDays(today, 4) } },
+    '1': { game_week: { week: '19', start: today, end: today } },
+    '2': { game_week: { week: '20', start: addDays(today, 1), end: addDays(today, 1) } },
+    '3': { game_week: { week: '21', start: addDays(today, 2), end: addDays(today, 4) } },
+    count: 4 } }] } },
+  'league/466.l.33458/settings': { fantasy_content: { league: [{ league_key: '466.l.33458' }, { settings: [{ playoff_start_week: '19' }] }] } },
   [`team/466.l.33458.t.1/roster;date=${today}/players/stats;type=average_season`]: roster([
     player('p1', 'Jayson Tatum', 'BOS', 'SF,PF', 'SF', avg),
     player('p2', 'Bench Guy', 'BOS', 'PG', 'BN', avg),
@@ -106,6 +112,7 @@ const ESPN_POOL = { players: [
   ...Array.from({ length: 115 }, (_, i) => espnP(i + 2, `Filler ${i}`, { pts: 20 - i / 10, reb: 6 })),
   espnP(500, 'Bench Guy', { pts: 4, reb: 1 }),
   espnP(501, 'Lakers Big', { pts: 12, reb: 11 }),
+  espnP(502, 'Nikola Jokić', { pts: 29, reb: 12 }),
 ] };
 
 let server, base, realFetch;
@@ -347,4 +354,31 @@ test('this week: category odds, opponent scouting from history, streamers', asyn
   assert.ok(opt['Bench Guy'].rosRank > opt['Jayson Tatum'].rosRank);
   assert.equal(big.keeper, true);              // better than Bench Guy long-term
   assert.equal(s.addsLimit, 4);
+});
+
+test('alerts: no position-breaking lineup swap; playoff planner; trade checker', async () => {
+  const a = await (await get('/api/alerts')).json();
+  assert.ok(Array.isArray(a.alerts), JSON.stringify(a));
+  // Bench Guy (PG) plays tomorrow, but the idle starters are SF and C: no valid swap
+  assert.ok(!a.alerts.some(x => x.kind === 'lineup' && x.level === 'action'), JSON.stringify(a.alerts));
+  assert.ok(a.alerts.some(x => x.kind === 'lineup' && x.text.includes('Bench Guy')));
+  assert.equal(a.ilCapacity, 2);
+
+  const p = await (await get('/api/playoffs')).json();
+  assert.deepEqual(p.weeks.map(w => w.week), [19, 20, 21], JSON.stringify(p));
+  const bos = p.teams.find(t => t.team === 'BOS');
+  assert.deepEqual(bos.games, [1, 0, 0]);
+  assert.equal(p.teams.find(t => t.team === 'LAL').games[1], 1);
+  assert.ok(p.mine.find(x => x.name === 'Jayson Tatum').total === 1);
+
+  const list = await (await get('/api/trade')).json();
+  assert.equal(list.me.players.length, 3, JSON.stringify(list));
+  assert.equal(list.teams.length, 1);
+  const t = await (await get('/api/trade?partner=466.l.33458.t.2&give=p2&get=o1')).json();
+  assert.deepEqual(t.give, ['Bench Guy'], JSON.stringify(t));
+  assert.deepEqual(t.get, ['Nikola Jokić']);
+  assert.ok(t.me.change > 0, String(t.me.change));
+  assert.ok(t.me.after > t.me.before && t.me.after <= 9);
+  assert.ok(t.partnerResult.change < 0);
+  assert.equal((await get('/api/trade?partner=nope&give=p2')).status, 400);
 });

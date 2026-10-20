@@ -474,3 +474,24 @@ select.input-sm { width: auto; }
 .tw-stream .tag { margin-right: 4px; }
 .tw-drops { margin: 4px 0 12px; }
 .tw-drops summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+
+/* Alerts */
+.alerts-hot { border-color: rgba(239, 68, 68, 0.5); }
+.alerts-list { list-style: none; padding: 0; margin: 6px 0 10px; }
+.alerts-list li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; line-height: 1.45; }
+.alerts-list li.action { font-weight: 600; }
+.alerts-list .tag { margin-right: 6px; }
+
+/* Trade */
+.trade-partner { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.trade-partner select { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 14px; }
+.trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
+@media (max-width: 600px) { .trade-cols { grid-template-columns: 1fr; } }
+.trade-list { list-style: none; padding: 0; margin: 0; }
+.trade-list label { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; cursor: pointer; flex-wrap: wrap; }
+.trade-list input { transform: translateY(1px); }
+.trade-verdict { display: flex; gap: 24px; flex-wrap: wrap; margin: 6px 0; }
+
+/* Playoffs */
+.po-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .po-cols { grid-template-columns: 1fr; } }
