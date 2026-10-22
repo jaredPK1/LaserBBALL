@@ -5,7 +5,7 @@ import { gamesBetween, etDate, addDays, nbaTeam, normName } from './nba.js';
 import { roster } from './gamenight.js';
 import { availability as durability } from '../src/draft/engine.js';
 import {
-  IL_SLOTS, OUT, KEEP_RANK, espnRates, rosOf, ratesFor, availability, gameVar,
+  IL_SLOTS, IL_ELIGIBLE, OUT, KEEP_RANK, espnRates, rosOf, ratesFor, availability, gameVar,
   freeAgents, teamGames, nick, categoryOdds, expectedWins,
 } from './weekly.js';
 
@@ -64,19 +64,25 @@ export async function alerts(req, res) {
     out.push({ kind: 'lineup', level: 'info', when: 'tomorrow', text: `${stuck.join(', ')} play${stuck.length === 1 ? 's' : ''} tomorrow but no open slot fits their position.` });
   }
 
-  // Injuries
+  // Injuries. Yahoo only allows IL for players listed INJ; an O player has
+  // to sit on your roster (benched) or be dropped.
   const ilUsed = tm.filter(p => IL_SLOTS.has(p.slot)).length;
   const injured = tm.filter(p => OUT.has(p.status) && !IL_SLOTS.has(p.slot));
   let ilFree = IL_CAPACITY - ilUsed;
   for (const p of injured) {
     const ros = rosOf(p.name, espn);
     const keep = ros.rosRank == null || ros.rosRank <= KEEP_RANK;
-    if (ilFree > 0) {
+    const why = `${p.name} is ${p.status}${p.injury ? ` (${p.injury})` : ''}`;
+    let text;
+    if (IL_ELIGIBLE.has(p.status) && ilFree > 0) {
       ilFree -= 1;
-      out.push({ kind: 'injury', level: 'action', when: 'now', text: `${p.name} is ${p.status}${p.injury ? ` (${p.injury})` : ''}. Move him to IL to free a roster spot.` });
+      text = `${why}. Move him to IL to free a roster spot.`;
+    } else if (IL_ELIGIBLE.has(p.status)) {
+      text = `${why} and both IL slots are full. ${keep ? 'He’s worth keeping: drop your weakest droppable player instead.' : 'He’s droppable if you need the spot.'}`;
     } else {
-      out.push({ kind: 'injury', level: 'action', when: 'now', text: `${p.name} is ${p.status}${p.injury ? ` (${p.injury})` : ''} and both IL slots are full. ${keep ? 'He’s worth keeping: drop your weakest droppable player instead.' : 'He’s droppable if you need the spot.'}` });
+      text = `${why}. Yahoo won’t allow IL for ${p.status}, so ${keep ? 'keep him on your bench until he’s back.' : 'he’s droppable if you need the spot.'}`;
     }
+    out.push({ kind: 'injury', level: 'action', when: 'now', text });
   }
   const gtd = tm.filter(p => ['GTD', 'DTD'].includes(p.status) && ACTIVE(p.slot));
   if (gtd.length) out.push({ kind: 'injury', level: 'info', when: 'tomorrow', text: `Game-time decisions in your lineup: ${gtd.map(p => p.name).join(', ')}. Check news before lock.` });

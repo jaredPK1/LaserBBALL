@@ -176,7 +176,10 @@ app.get('/api/gamenight', wrap(gameNight));
 // owner's assistant can review real numbers between visits
 const snapshot = (name, fn) => async (req, res) => {
   const out = await fn(req, res);
-  if (storeConfigured() && out) setJson(`snap:${name}`, { savedAt: new Date().toISOString(), ...out }).catch(() => {});
+  // Awaited: Vercel can stop a function as soon as the response is sent
+  if (storeConfigured() && out) {
+    await setJson(`snap:${name}`, { savedAt: new Date().toISOString(), ...out }).catch(e => console.error(`snapshot ${name}:`, e.message));
+  }
   return out;
 };
 app.get('/api/week', wrap(snapshot('week', weekProjection)));

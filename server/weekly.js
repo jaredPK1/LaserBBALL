@@ -16,6 +16,8 @@ const ROS_WEIGHTS = { fg: 1, ft: 1, tpm: 1, pts: 1, reb: 1, ast: 0, stl: 1, blk:
 // Anyone ranked inside this is a rostered-caliber player in an 8-team, 13-round league
 export const KEEP_RANK = TEAMS * ROUNDS + 6;
 export const IL_SLOTS = new Set(['IL', 'IL+', 'IL+LT', 'NA']);
+// Yahoo only allows IL for players listed INJ (not O)
+export const IL_ELIGIBLE = new Set(['INJ']);
 export const OUT = new Set(['O', 'INJ', 'OUT', 'SUSP', 'NA']);
 const KEYS = ['fgm', 'fga', 'ftm', 'fta', 'tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'];
 
@@ -291,11 +293,12 @@ export async function weekStreamers(req, res) {
     return {
       p, ...ros, keeper,
       injured: OUT.has(p.status),
+      ilEligible: IL_ELIGIBLE.has(p.status),
       weekCost: base - evalRoster(st.mine.map(x => (x.id === p.id ? { ...x, until: addDays(addFrom, -1) } : x))),
     };
   }).sort((a, b) => (a.rosValue ?? Infinity) - (b.rosValue ?? Infinity));
-  const pool = options.filter(o => !o.keeper && !o.injured);
-  const pick = pool[0] || options.find(o => !o.injured) || null;
+  const pool = options.filter(o => !o.keeper && !o.ilEligible);
+  const pick = pool[0] || options.find(o => !o.ilEligible) || null;
   const drop = pick?.p || null;
   const withDrop = st.mine.map(x => (drop && x.id === drop.id ? { ...x, until: addDays(addFrom, -1) } : x));
 
@@ -334,7 +337,7 @@ export async function weekStreamers(req, res) {
     drop: drop ? { name: drop.name, pos: drop.pos, rosRank: pick.rosRank, weekCost: pick.weekCost, allKeepers: !pool.length } : null,
     dropOptions: options.map(o => ({
       name: o.p.name, pos: o.p.pos, status: o.p.status, rosRank: o.rosRank, keeper: o.keeper, injured: o.injured, weekCost: o.weekCost,
-      advice: o.injured ? 'Move to IL' : o.keeper ? 'Keep' : 'Droppable',
+      advice: o.ilEligible ? 'Move to IL' : o.keeper ? (o.injured ? 'Keep (bench)' : 'Keep') : 'Droppable',
     })),
     streamers: ranked.slice(0, 15),
     considered: fas.length,
