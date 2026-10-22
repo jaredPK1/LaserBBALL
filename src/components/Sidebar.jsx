@@ -1,33 +1,30 @@
 import { NavLink } from 'react-router-dom';
 import { startAuth, clearTokens } from '../api/yahoo';
 
+// In-season tools first. Older pages (Matchup, Game Plan, Today, Start / Sit,
+// Waivers) are superseded by Game Night + This Week; their routes still work.
 const navItems = [
-  {
-    section: 'DRAFT',
-    items: [
-      { icon: '\u{1F4CA}', label: 'Draft Board', path: '/draft' },
-      { icon: '\u{1F50E}', label: 'League Intel', path: '/intel' },
-    ],
-  },
   {
     section: 'GAME DAY',
     items: [
       { icon: '\u{1F534}', label: 'Game Night', path: '/gamenight' },
       { icon: '\u{1F4C8}', label: 'This Week', path: '/week' },
-      { icon: '\u{1F3C0}', label: 'Matchup', path: '/matchup' },
-      { icon: '\u{1F9E0}', label: 'Game Plan', path: '/gameplan' },
-      { icon: '\u{1F4C6}', label: 'Today', path: '/today' },
     ],
   },
   {
     section: 'MANAGE',
     items: [
       { icon: '\u{1F3AF}', label: 'My Roster', path: '/roster' },
-      { icon: '\u{2694}️', label: 'Start / Sit', path: '/startsit' },
-      { icon: '\u{1F4CB}', label: 'Waivers', path: '/waivers' },
-      { icon: '\u{1F4C5}', label: 'Schedule', path: '/schedule' },
       { icon: '\u{1F91D}', label: 'Trade', path: '/trade' },
       { icon: '\u{1F3C6}', label: 'Playoffs', path: '/playoffs' },
+      { icon: '\u{1F4C5}', label: 'Schedule', path: '/schedule' },
+    ],
+  },
+  {
+    section: 'DRAFT',
+    items: [
+      { icon: '\u{1F4CA}', label: 'Draft Board', path: '/draft' },
+      { icon: '\u{1F50E}', label: 'League Intel', path: '/intel' },
     ],
   },
   {

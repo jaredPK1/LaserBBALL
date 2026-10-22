@@ -64,8 +64,8 @@ export async function alerts(req, res) {
     out.push({ kind: 'lineup', level: 'info', when: 'tomorrow', text: `${stuck.join(', ')} play${stuck.length === 1 ? 's' : ''} tomorrow but no open slot fits their position.` });
   }
 
-  // Injuries. Yahoo only allows IL for players listed INJ; an O player has
-  // to sit on your roster (benched) or be dropped.
+  // Injuries. O and INJ players can go on IL; others (e.g. suspended)
+  // have to sit on your bench or be dropped.
   const ilUsed = tm.filter(p => IL_SLOTS.has(p.slot)).length;
   const injured = tm.filter(p => OUT.has(p.status) && !IL_SLOTS.has(p.slot));
   let ilFree = IL_CAPACITY - ilUsed;

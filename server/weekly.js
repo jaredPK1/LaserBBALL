@@ -16,8 +16,8 @@ const ROS_WEIGHTS = { fg: 1, ft: 1, tpm: 1, pts: 1, reb: 1, ast: 0, stl: 1, blk:
 // Anyone ranked inside this is a rostered-caliber player in an 8-team, 13-round league
 export const KEEP_RANK = TEAMS * ROUNDS + 6;
 export const IL_SLOTS = new Set(['IL', 'IL+', 'IL+LT', 'NA']);
-// Yahoo only allows IL for players listed INJ (not O)
-export const IL_ELIGIBLE = new Set(['INJ']);
+// Statuses Yahoo accepts in an IL slot (O and INJ; not GTD/DTD or suspensions)
+export const IL_ELIGIBLE = new Set(['O', 'INJ', 'OUT']);
 export const OUT = new Set(['O', 'INJ', 'OUT', 'SUSP', 'NA']);
 const KEYS = ['fgm', 'fga', 'ftm', 'fta', 'tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'];
 
