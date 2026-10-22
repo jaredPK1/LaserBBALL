@@ -495,3 +495,4 @@ select.input-sm { width: auto; }
 /* Playoffs */
 .po-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 600px) { .po-cols { grid-template-columns: 1fr; } }
+.tw-addshead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

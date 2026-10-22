@@ -331,6 +331,7 @@ export async function weekStreamers(req, res) {
 
   const adds = await addsUsed(req, res, st.ctx.teamKey);
   return {
+    asOf: new Date().toISOString(),
     week: st.week, end: st.bounds.end, addsStartPlaying: addFrom,
     baseline: base,
     addsUsed: adds, addsLimit: 4,

@@ -21,6 +21,11 @@ export default function ThisWeek() {
   const [streams, setStreams] = useState(null);
   const [error, setError] = useState(null);
   const [streamError, setStreamError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAdds = () => {
+    setRefreshing(true); setStreamError(null);
+    getStreamers().then(r => setStreams(r.data)).catch(e => setStreamError(e.response?.data?.error || e.message)).finally(() => setRefreshing(false));
+  };
 
   useEffect(() => {
     let live = true;
@@ -122,7 +127,11 @@ export default function ThisWeek() {
       )}
 
       <section className="card">
-        <h3>Best adds this week</h3>
+        <div className="tw-addshead">
+          <h3>Best adds this week</h3>
+          <button className="btn btn-ghost btn-sm" onClick={refreshAdds} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
+        </div>
+        {streams?.asOf && <p className="meta">Free agents as of {new Date(streams.asOf).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}. Players get picked up fast, so refresh before adding.</p>}
         {streamError ? <p className="settings-verdict settings-err">{streamError}</p>
           : !streams ? <p className="meta">Ranking free agents…</p> : (
             <>
