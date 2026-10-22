@@ -336,6 +336,9 @@ test('this week: category odds, opponent scouting from history, streamers', asyn
   assert.equal(d.opp.manager, 'old them');
   assert.ok(d.scouting && d.scouting.seasons.length === 1, JSON.stringify(d.scouting));
   assert.equal(d.scouting.catWin['FT%'], 1); // won FT% in the stored regular-season week
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(KV.get('snap:week').week, 3);   // latest result kept for review
+  assert.ok(KV.get('snap:week').savedAt);
 
   const s = await (await get(`/api/week/streamers?week=3&from=${today}`)).json();
   assert.ok(Array.isArray(s.streamers), JSON.stringify(s));

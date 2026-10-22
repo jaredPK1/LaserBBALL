@@ -172,9 +172,16 @@ app.get('/api/schedule/weekly', wrap(async (req, res) => {
 // ── Live / features ─────────────────────────────────────────────────────────
 app.get('/api/nba/scoreboard', wrap(() => getScoreboard()));
 app.get('/api/gamenight', wrap(gameNight));
-app.get('/api/week', wrap(weekProjection));
-app.get('/api/week/streamers', wrap(weekStreamers));
-app.get('/api/alerts', wrap(alerts));
+// Keep the latest result of each in-season view in the cloud store, so the
+// owner's assistant can review real numbers between visits
+const snapshot = (name, fn) => async (req, res) => {
+  const out = await fn(req, res);
+  if (storeConfigured() && out) setJson(`snap:${name}`, { savedAt: new Date().toISOString(), ...out }).catch(() => {});
+  return out;
+};
+app.get('/api/week', wrap(snapshot('week', weekProjection)));
+app.get('/api/week/streamers', wrap(snapshot('streamers', weekStreamers)));
+app.get('/api/alerts', wrap(snapshot('alerts', alerts)));
 app.get('/api/playoffs', wrap(playoffs));
 app.get('/api/trade', wrap(trade));
 app.get('/api/draft/pool', wrap(draftPool));
