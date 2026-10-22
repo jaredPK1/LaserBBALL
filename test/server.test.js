@@ -319,8 +319,8 @@ test('this week: category odds, opponent scouting from history, streamers', asyn
   const fa = (key, name, team, pos, pts, reb) => player(key, name, team, pos, '', { ...avg, '12': String(pts), '15': String(reb) });
   const faList = players => ({ fantasy_content: { league: [{ league_key: '466.l.33458' }, { players: Object.assign({ count: players.length }, ...players.map((p, i) => ({ [i]: p }))) }] } });
   const S = 'stats;type=average_season';
-  FIX[`league/466.l.33458/players;status=A;sort=OR;count=25/${S}`] = faList([fa('f1', 'Lakers Big', 'LAL', 'C', 12, 11), fa('f2', 'Idle Guard', 'NY', 'PG', 18, 3)]);
-  FIX[`league/466.l.33458/players;status=A;position=C;sort=OR;count=25/${S}`] = faList([fa('f1', 'Lakers Big', 'LAL', 'C', 12, 11)]);
+  FIX[`league/466.l.33458/players;status=FA;sort=OR;count=25/${S}`] = faList([fa('f1', 'Lakers Big', 'LAL', 'C', 12, 11), fa('f2', 'Idle Guard', 'NY', 'PG', 18, 3)]);
+  FIX[`league/466.l.33458/players;status=FA;position=C;sort=OR;count=25/${S}`] = faList([fa('f1', 'Lakers Big', 'LAL', 'C', 12, 11)]);
 
   const r = await get(`/api/week?week=3&from=${today}`);
   const d = await r.json();

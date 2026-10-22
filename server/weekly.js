@@ -258,10 +258,10 @@ async function addsUsed(req, res, teamKey) {
 export async function freeAgents(req, res, lk) {
   const STATS = 'stats;type=average_season';
   const paths = [
-    `league/${lk}/players;status=A;sort=OR;count=25/${STATS}`,
-    `league/${lk}/players;status=A;sort=OR;count=25;start=25/${STATS}`,
-    `league/${lk}/players;status=A;position=C;sort=OR;count=25/${STATS}`,
-    `league/${lk}/players;status=A;position=PF;sort=OR;count=25/${STATS}`,
+    `league/${lk}/players;status=FA;sort=OR;count=25/${STATS}`,
+    `league/${lk}/players;status=FA;sort=OR;count=25;start=25/${STATS}`,
+    `league/${lk}/players;status=FA;position=C;sort=OR;count=25/${STATS}`,
+    `league/${lk}/players;status=FA;position=PF;sort=OR;count=25/${STATS}`,
   ];
   const seen = new Map();
   const results = await Promise.all(paths.map(p => yget(req, res, p).catch(() => null)));
