@@ -9,6 +9,7 @@ const navItems = [
     items: [
       { icon: '\u{1F534}', label: 'Game Night', path: '/gamenight' },
       { icon: '\u{1F4C8}', label: 'This Week', path: '/week' },
+      { icon: '\u{1F3DF}', label: 'League', path: '/league' },
     ],
   },
   {

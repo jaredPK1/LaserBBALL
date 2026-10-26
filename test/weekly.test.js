@@ -58,3 +58,16 @@ test('real stats get more weight as the season goes on', async () => {
   assert.match(half.src, /50% this season/);
   assert.equal(ratesFor({ name: 'Nobody', stats: player.stats }, espn, 0.5).rates.pts, 20); // no projection: actual
 });
+
+test('league ripple: standings projection, rooting interest, free-agent value per team', async () => {
+  const { projectStandings, rootingInterest } = await import('../server/league.js');
+  const st = projectStandings([
+    { key: 'me', wins: 10, losses: 8, ties: 0 }, { key: 'a', wins: 11, losses: 7, ties: 0 },
+    { key: 'b', wins: 2, losses: 16, ties: 0 }, { key: 'c', wins: 9, losses: 9, ties: 0 },
+  ], { me: 6, a: 3, b: 6, c: 3 });
+  assert.equal(st[0].key, 'me');
+  assert.equal(st.find(t => t.key === 'a').projL, 13);
+  const root = rootingInterest([{ a: 'me', b: 'a' }, { a: 'b', b: 'c' }], st, 'me');
+  assert.equal(root['b|c'].against, 'c');   // c is near you; b is far behind
+  assert.equal(root['me|a'], undefined);
+});

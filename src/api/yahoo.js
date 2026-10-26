@@ -134,3 +134,12 @@ export const getHistorySeason = (leagueKey, fresh = false) =>
 
 export const getEspnPool = () =>
   axios.get(`${BASE}/draft/espn`, { timeout: 60000 });
+
+export const getLeagueWeek = () =>
+  apiCall(() => axios.get(`${BASE}/race/week`, { timeout: 60000 }));
+
+export const getTradeIdeas = () =>
+  apiCall(() => axios.get(`${BASE}/trade/ideas`, { timeout: 90000 }));
+
+export const getPower = (week) =>
+  apiCall(() => axios.get(`${BASE}/race/power${week ? `?week=${week}` : ''}`, { timeout: 60000 }));

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getTrade } from '../api/yahoo';
+import { getTrade, getTradeIdeas } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 
 const pct = p => `${Math.round(p * 100)}%`;
@@ -22,10 +22,10 @@ export default function Trade() {
 
   const toggle = (list, set, key) => { set(list.includes(key) ? list.filter(k => k !== key) : [...list, key]); setResult(null); };
 
-  const check = async () => {
+  const check = async (pk = partner, gv = give, gt = get) => {
     setBusy(true); setError(null);
     try {
-      setResult((await getTrade({ partner, give: give.join(','), get: get.join(',') })).data);
+      setResult((await getTrade({ partner: pk, give: gv.join(','), get: gt.join(',') })).data);
     } catch (e) {
       setError(e.response?.data?.error || e.message);
     }
@@ -46,6 +46,11 @@ export default function Trade() {
     <div>
       <PageHeader title="Trade Checker" subtitle="Simulates your season before and after a trade: average category wins per week against every team" />
 
+      <TradeIdeas onCheck={d => {
+        setPartner(d.partner.key); setGive(d.giveKeys); setGet([d.getKey]);
+        check(d.partner.key, d.giveKeys, [d.getKey]);
+      }} />
+
       <section className="card">
         <label className="trade-partner">
           <span>Trade with</span>
@@ -64,7 +69,7 @@ export default function Trade() {
             {them ? <PlayerList players={them.players} picked={get} onToggle={k => toggle(get, setGet, k)} /> : <p className="meta">Choose a team first.</p>}
           </div>
         </div>
-        <button className="btn btn-primary" disabled={!partner || (!give.length && !get.length) || busy} onClick={check}>
+        <button className="btn btn-primary" disabled={!partner || (!give.length && !get.length) || busy} onClick={() => check()}>
           {busy ? 'Simulating…' : 'Check this trade'}
         </button>
         {error && <p className="settings-verdict settings-err">{error}</p>}
@@ -108,6 +113,46 @@ export default function Trade() {
         </section>
       )}
     </div>
+  );
+}
+
+function TradeIdeas({ onCheck }) {
+  const [ideas, setIdeas] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const find = () => {
+    setBusy(true); setErr(null);
+    getTradeIdeas().then(r => setIdeas(r.data)).catch(e => setErr(e.response?.data?.error || e.message)).finally(() => setBusy(false));
+  };
+  return (
+    <section className="card">
+      <div className="tw-addshead">
+        <h3>Trade ideas you can sell</h3>
+        <button className="btn btn-ghost btn-sm" onClick={find} disabled={busy}>{busy ? 'Searching…' : ideas ? 'Search again' : 'Find trades'}</button>
+      </div>
+      <p className="settings-note">Tries every 1-for-1 and 2-for-1 with every team. Keeps only deals that help you and don’t hurt them, so you can pitch each one on what they gain. Win-wins first.</p>
+      {err && <p className="settings-verdict settings-err">{err}</p>}
+      {ideas && ideas.ideas.length === 0 && <p className="meta">No deal found that helps you without hurting the other team. Check again after injuries or hot streaks shift values.</p>}
+      {ideas && ideas.ideas.length > 0 && (
+        <ul className="trade-ideas">
+          {ideas.ideas.map((d, i) => (
+            <li key={i}>
+              <div>
+                <b>{d.give.join(' + ')}</b> for <b>{d.get}</b> <span className="meta">with {d.partner.manager || d.partner.name}</span>
+                {d.winWin && <span className="tag tag-green">Win-win</span>}
+              </div>
+              <div className="meta">
+                You {signed(d.myGain)} cats/week{d.youGain.length ? ` (${d.youGain.join(', ')})` : ''} · them {signed(d.theirGain)}{d.theyGain.length ? ` (${d.theyGain.join(', ')})` : ''}
+              </div>
+              {d.theyGain.length > 0 && <div className="meta">Pitch: “This helps your {d.theyGain.join(' and ')}.”</div>}
+              {d.note && <div className="meta">{d.note}</div>}
+              <button className="btn btn-ghost btn-sm" onClick={() => onCheck(d)}>Check it below</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {ideas && <p className="meta">Searched {ideas.searched} teams. Season view: injured players count at 75%.</p>}
+    </section>
   );
 }
 

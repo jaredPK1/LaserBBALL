@@ -496,3 +496,19 @@ select.input-sm { width: auto; }
 .po-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 600px) { .po-cols { grid-template-columns: 1fr; } }
 .tw-addshead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* League page */
+.pr-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 10px; }
+.pr-team { border: 1px solid var(--border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 10px 12px; }
+.pr-mine { border-color: var(--green); }
+.pr-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pr-rank { font-size: 1.4rem; font-weight: 700; min-width: 1.6em; }
+.pr-rec { margin-left: auto; font-variant-numeric: tabular-nums; }
+.pr-notes { margin: 6px 0; padding-left: 18px; }
+.pr-notes li { margin: 2px 0; }
+.lg-mine { border-color: var(--green); }
+.lg-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.lg-right { text-align: right; }
+.lg-vs { text-align: center; }
+.trade-ideas { list-style: none; padding: 0; display: grid; gap: 10px; }
+.trade-ideas li { border: 1px solid var(--border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 10px 12px; }

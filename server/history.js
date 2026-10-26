@@ -16,7 +16,7 @@ function parseManager(info) {
   };
 }
 
-function parseTeam(node) {
+export function parseTeam(node) {
   const info = merge(node[0]);
   const extra = merge(node.slice(1));
   const st = extra.team_standings || {};

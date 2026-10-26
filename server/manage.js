@@ -144,7 +144,7 @@ function weeklyLine(players) {
   const mean = Object.fromEntries(KEYS.map(k => [k, 0]));
   const vars = Object.fromEntries(KEYS.map(k => [k, 0]));
   for (const p of players) {
-    const g = GAMES_PER_WEEK * p.avail * p.durability;
+    const g = GAMES_PER_WEEK * (p.seasonAvail ?? p.avail) * p.durability;
     if (g <= 0) continue;
     for (const k of KEYS) { mean[k] += g * (p.rates[k] || 0); vars[k] += g * gameVar(p.rates[k] || 0); }
     for (const [mk, ak] of [['fgm', 'fga'], ['ftm', 'fta']]) {
@@ -164,7 +164,7 @@ export function seasonStrength(team, others) {
   return { cats, expected: all.reduce((a, o) => a + expectedWins(o), 0) / all.length };
 }
 
-async function leagueRosters(req, res, ctx, espn) {
+export async function leagueRosters(req, res, ctx, espn) {
   const data = await yget(req, res, `league/${ctx.leagueKey}/teams`);
   const nodes = each(merge(data.fantasy_content.league.slice(1)).teams, 'team');
   const today = etDate();
@@ -178,6 +178,8 @@ async function leagueRosters(req, res, ctx, espn) {
         return {
           key: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, slot: p.slot, status: p.status,
           rates: r.rates, src: r.src, avail: availability(p),
+          // Season view: injured players come back, so discount instead of zeroing
+          seasonAvail: OUT.has(p.status) ? 0.75 : ['GTD', 'DTD'].includes(p.status) ? 0.95 : 1,
           durability: durabilityOf(p.name, espn), ...rosOf(p.name, espn),
         };
       }),
@@ -205,7 +207,8 @@ export async function trade(req, res) {
   const get = new Set(String(req.query.get || '').split(',').filter(Boolean));
   if (!give.size && !get.size) throw Object.assign(new Error('Pick at least one player'), { status: 400 });
 
-  const active = t => t.players.filter(p => !IL_SLOTS.has(p.slot));
+  // Whole roster including IL: injured players are discounted, not dropped
+  const active = t => t.players;
   const meAfter = [...active(me).filter(p => !give.has(p.key)), ...active(partner).filter(p => get.has(p.key))];
   const ptAfter = [...active(partner).filter(p => !get.has(p.key)), ...active(me).filter(p => give.has(p.key))];
   const others = teams.filter(t => t.key !== me.key && t.key !== partner.key).map(active);
@@ -225,4 +228,85 @@ export async function trade(req, res) {
     partnerResult: { before: pBefore.expected, after: pAfter.expected, change: pAfter.expected - pBefore.expected, cats: diff(pBefore, pAfter) },
     unrated: [...meAfter, ...ptAfter].filter(p => p.src === 'none').map(p => p.name),
   };
+}
+
+// ── Trade finder ────────────────────────────────────────────────────────────
+// Every 1-for-1, and every 2-for-1 where you give two, with every team.
+// "Sellable" = it helps you and the other side doesn't lose (so you can
+// pitch it on what they gain). Uneven trades: the side that frees a roster
+// spot picks up the best free agent; the side that gets one extra drops its
+// lowest-value player.
+const strengthOf = (line, otherLines) => {
+  const all = otherLines.map(o => categoryOdds({ me: ZERO, opp: ZERO }, line, o));
+  return {
+    expected: all.reduce((a, o) => a + expectedWins(o), 0) / all.length,
+    cats: all[0].map((c, i) => ({ name: c.name, winProb: all.reduce((a, o) => a + o[i].winProb, 0) / all.length })),
+  };
+};
+
+export function findTrades(me, teams, { fas = [], limit = 12, perPartner = 3 } = {}) {
+  const others = teams.filter(t => t.key !== me.key);
+  const lines = new Map(teams.map(t => [t.key, weeklyLine(t.players)]));
+  const base = new Map(teams.map(t => [t.key, strengthOf(lines.get(t.key), teams.filter(o => o.key !== t.key).map(o => lines.get(o.key)))]));
+  const bestFa = [...fas].sort((a, b) => (b.rosValue ?? -9) - (a.rosValue ?? -9))[0] || null;
+  const worst = list => [...list].sort((a, b) => (a.rosValue ?? -9) - (b.rosValue ?? -9))[0];
+  const ideas = [];
+
+  for (const pt of others) {
+    const rest = others.filter(t => t.key !== pt.key).map(t => lines.get(t.key));
+    const deals = [];
+    const gives = [...me.players.map(p => [p]), ...me.players.flatMap((a, i) => me.players.slice(i + 1).map(b => [a, b]))];
+    for (const give of gives) {
+      const giveKeys = new Set(give.map(p => p.key));
+      for (const get of pt.players) {
+        let meAfter = [...me.players.filter(p => !giveKeys.has(p.key)), get];
+        let ptAfter = [...pt.players.filter(p => p.key !== get.key), ...give];
+        let note = null;
+        if (give.length === 2) {
+          const drop = worst(ptAfter);
+          ptAfter = ptAfter.filter(p => p !== drop);
+          if (bestFa) meAfter = [...meAfter, bestFa];
+          note = `${pt.manager || pt.name} would drop ${drop.name}${bestFa ? `; you'd add ${bestFa.name}` : ''}`;
+        }
+        const lm = weeklyLine(meAfter), lp = weeklyLine(ptAfter);
+        const mine = strengthOf(lm, [lp, ...rest]);
+        const theirs = strengthOf(lp, [lm, ...rest]);
+        const myGain = mine.expected - base.get(me.key).expected;
+        const theirGain = theirs.expected - base.get(pt.key).expected;
+        if (myGain < 0.05 || theirGain < -0.03) continue;
+        const delta = (after, before) => after.cats.map((c, i) => ({ name: c.name, change: c.winProb - before.cats[i].winProb }));
+        const top = (d, n) => d.filter(c => c.change > 0.01).sort((a, b) => b.change - a.change).slice(0, n).map(c => c.name);
+        deals.push({
+          partner: { key: pt.key, name: pt.name, manager: pt.manager },
+          give: give.map(p => p.name), get: get.name, giveKeys: give.map(p => p.key), getKey: get.key, note,
+          myGain, theirGain,
+          youGain: top(delta(mine, base.get(me.key)), 3),
+          theyGain: top(delta(theirs, base.get(pt.key)), 3),
+          winWin: theirGain > 0.02,
+        });
+      }
+    }
+    deals.sort((a, b) => b.myGain - a.myGain);
+    const seen = new Set();
+    ideas.push(...deals.filter(d => !seen.has(d.get) && seen.add(d.get)).slice(0, perPartner));
+  }
+  // Win-wins first (easiest to sell), then by how much they help you
+  return ideas.sort((a, b) => (b.winWin - a.winWin) || (b.myGain - a.myGain)).slice(0, limit);
+}
+
+export async function tradeIdeas(req, res) {
+  const ctx = await myContext(req, res);
+  const espn = await espnRates();
+  const [teams, faList] = await Promise.all([
+    leagueRosters(req, res, ctx, espn),
+    freeAgents(req, res, ctx.leagueKey).catch(() => []),
+  ]);
+  const me = teams.find(t => t.mine);
+  if (!me) throw Object.assign(new Error('Could not find your team in this league'), { status: 404 });
+  const w = realWeight(ctx.currentWeek);
+  const fas = faList.filter(p => !OUT.has(p.status)).map(p => {
+    const r = ratesFor(p, espn, w);
+    return { key: p.key, name: p.name, rates: r.rates, avail: 1, seasonAvail: 1, durability: durabilityOf(p.name, espn), ...rosOf(p.name, espn) };
+  }).filter(p => p.rosValue != null);
+  return { ideas: findTrades(me, teams, { fas }), searched: teams.length - 1 };
 }

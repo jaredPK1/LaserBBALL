@@ -6,7 +6,7 @@ import { etDate } from './nba.js';
 import { CATS, yahooLine, catValue, weekBounds } from './gamenight.js';
 import { storeConfigured, getJson } from './store.js';
 
-const result = (cat, mine, opp) => {
+export const catResult = (cat, mine, opp) => {
   if (Math.abs(mine - opp) < (cat.pct ? 0.0005 : 0.001)) return 'T';
   return (cat.low ? mine < opp : mine > opp) ? 'W' : 'L';
 };
@@ -72,7 +72,7 @@ export async function weekReview(req, res) {
     const p = projected.get(cat.name);
     return {
       name: cat.name, pct: !!cat.pct, mine: a, opp: b,
-      result: winners[cat.id] || result(cat, a, b),
+      result: winners[cat.id] || catResult(cat, a, b),
       projWin: p ? p.winProb : null, projMine: p ? p.mineEnd : null, projOpp: p ? p.oppEnd : null,
     };
   });

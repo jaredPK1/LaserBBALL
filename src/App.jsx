@@ -17,6 +17,7 @@ import Settings from './pages/Settings';
 import ThisWeek from './pages/ThisWeek';
 import Trade from './pages/Trade';
 import Playoffs from './pages/Playoffs';
+import League from './pages/League';
 
 // The draft board works without Yahoo (CSV import / cached pool), so it's never gated.
 const PUBLIC = new Set(['/connect', '/draft', '/settings']);
@@ -45,6 +46,7 @@ function AppInner() {
           <Route path="/connect" element={<Connect authed={authed} />} />
           <Route path="/gamenight" element={<GameNight />} />
           <Route path="/week" element={<ThisWeek />} />
+          <Route path="/league" element={<League />} />
           <Route path="/trade" element={<Trade />} />
           <Route path="/playoffs" element={<Playoffs />} />
           <Route path="/matchup" element={<Matchup />} />

@@ -414,3 +414,39 @@ test('weekly review: final categories vs the saved projection, plus your moves',
   assert.deepEqual(r.moves.map(m => `${m.type} ${m.name}`), ['add New Big', 'drop Old Guard']);
   assert.ok(KV.has('snap:week:3:first') && KV.has('snap:week:3:last'));
 });
+
+test('league: every matchup projected, standings after the week, power rankings', async () => {
+  const mu = FIX['team/466.l.33458.t.1/matchups;weeks=3'].fantasy_content.team[1].matchups['0'].matchup;
+  const sb = { fantasy_content: { league: [{}, { scoreboard: { '0': { matchups: { '0': { matchup: {
+    week: 3, stat_winners: [{ stat_winner: { stat_id: '12', winner_team_key: '466.l.33458.t.1' } }],
+    '0': mu['0'] } }, count: 1 } }, week: 3 } }] } };
+  FIX['league/466.l.33458/scoreboard;week=3'] = sb;
+  FIX['league/466.l.33458/scoreboard;week=2'] = sb;
+  FIX['league/466.l.33458/standings'] = { fantasy_content: { league: [{}, { standings: [{ teams: {
+    '0': { team: [mgrTeam('466.l.33458.t.1', 'Me FC', 'G1', true), { team_standings: { rank: 2, outcome_totals: { wins: 10, losses: 8, ties: 0 } } }] },
+    '1': { team: [mgrTeam('466.l.33458.t.2', 'Them', 'G2', false), { team_standings: { rank: 1, outcome_totals: { wins: 11, losses: 7, ties: 0 } } }] },
+    count: 2 } }] }] } };
+
+  const r = await get('/api/race/week');
+  const d = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.matchups.length, 1);
+  const m = d.matchups[0];
+  assert.ok(m.mine);
+  assert.ok(Math.abs(m.teams[0].expected + m.teams[1].expected - 9) < 1e-9);
+  assert.equal(m.cats.find(c => c.name === 'PTS').aNow, 300);
+  assert.equal(d.standings.length, 2);
+  const me = d.standings.find(t => t.mine);
+  assert.ok(Math.abs(me.projW - (10 + m.teams[0].expected)) < 1e-9);
+  assert.ok(Array.isArray(d.freeAgents));
+
+  const p = await (await get('/api/race/power')).json();
+  assert.equal(p.week, 2, JSON.stringify(p));
+  assert.equal(p.rankings.length, 2);
+  const mine = p.rankings.find(x => x.mine);
+  assert.equal(mine.allPlay.of, 1);
+  assert.ok(mine.result && mine.result.opp === 'Them');
+  assert.equal(mine.result.w + mine.result.l + mine.result.t, 9);
+  assert.ok(mine.notes.length >= 2, JSON.stringify(mine.notes));
+  assert.deepEqual(KV.get('snap:power:2').ranks.map(x => x.rank).sort(), [1, 2]);
+});

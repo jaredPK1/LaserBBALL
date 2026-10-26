@@ -42,3 +42,24 @@ test('season strength rises when you add a better player', () => {
   assert.ok(better.expected > even.expected);
   assert.ok(better.cats.find(c => c.name === 'REB').winProb > 0.5);
 });
+
+test('trade finder: only deals that help you without hurting the other side', async () => {
+  const { findTrades } = await import('../server/manage.js');
+  const r = (o) => ({ fgm: 6, fga: 13, ftm: 2, fta: 2.6, tpm: 1.5, pts: 15, reb: 5, ast: 3, stl: 1, blk: 0.6, to: 1.5, ...o });
+  const pl = (name, o, rosValue = 1) => ({ key: name, name, rates: r(o), avail: 1, durability: 1, rosValue });
+  const avgTeam = k => ({ key: k, name: k, manager: k, players: Array.from({ length: 10 }, (_, i) => pl(`${k}${i}`, {})) });
+  // Me: loaded on bigs, short on threes; partner: the opposite
+  const me = { key: 'me', name: 'me', players: [...Array.from({ length: 7 }, (_, i) => pl(`m${i}`, {})), ...['A', 'B', 'C'].map(x => pl(`Big ${x}`, { reb: 12, blk: 2, tpm: 0 }))] };
+  const pt = { key: 'pt', name: 'pt', manager: 'pt', players: [...Array.from({ length: 7 }, (_, i) => pl(`p${i}`, {})), ...['A', 'B', 'C'].map(x => pl(`Shooter ${x}`, { tpm: 4, reb: 3, blk: 0.2 }))] };
+  const teams = [me, pt, ...['x', 'y', 'z'].map(avgTeam)];
+  const ideas = findTrades(me, teams, { fas: [pl('FA', {}, 0.5)] });
+  assert.ok(ideas.length > 0);
+  for (const d of ideas) {
+    assert.ok(d.myGain >= 0.05 && d.theirGain >= -0.03, JSON.stringify(d));
+    assert.ok(d.give.length >= 1 && d.get);
+  }
+  assert.ok(ideas.some(d => d.partner.key === 'pt' && d.get.startsWith('Shooter') && d.youGain.includes('3PTM')), JSON.stringify(ideas.slice(0, 3)));
+  // One idea per player you'd get, so the list isn't three copies of one deal
+  const gets = ideas.map(d => `${d.partner.key}:${d.get}`);
+  assert.equal(new Set(gets).size, gets.length);
+});

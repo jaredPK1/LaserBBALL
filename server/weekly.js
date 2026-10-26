@@ -137,7 +137,7 @@ export function ratesFor(p, espn, w = 0) {
 
 export const availability = (p) => (IL_SLOTS.has(p.slot) || OUT.has(p.status) ? 0 : p.status === 'GTD' || p.status === 'DTD' ? 0.6 : 1);
 
-function datesBetween(a, b) {
+export function datesBetween(a, b) {
   const out = [];
   for (let d = a; d <= b; d = addDays(d, 1)) out.push(d);
   return out;
