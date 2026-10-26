@@ -384,3 +384,33 @@ test('alerts: no position-breaking lineup swap; playoff planner; trade checker',
   assert.ok(t.partnerResult.change < 0);
   assert.equal((await get('/api/trade?partner=nope&give=p2')).status, 400);
 });
+
+test('weekly review: final categories vs the saved projection, plus your moves', async () => {
+  const mu = FIX['team/466.l.33458.t.1/matchups;weeks=3'].fantasy_content.team[1].matchups['0'].matchup;
+  mu.status = 'postevent';
+  mu.stat_winners = [{ stat_winner: { stat_id: '12', winner_team_key: '466.l.33458.t.1' } }, { stat_winner: { stat_id: '15', winner_team_key: '466.l.33458.t.2' } }];
+  const now = Math.floor(Date.now() / 1000);
+  const txPlayer = (key, name, td) => ({ player: [[{ player_key: key }, { name: { full: name } }], { transaction_data: td }] });
+  FIX['league/466.l.33458/transactions;team_key=466.l.33458.t.1;types=add,drop'] = { fantasy_content: { league: [{ league_key: '466.l.33458' }, { transactions: {
+    '0': { transaction: [{ transaction_key: 'x1', type: 'add/drop', timestamp: String(now) }, { players: {
+      '0': txPlayer('n1', 'New Big', [{ type: 'add', destination_team_key: '466.l.33458.t.1' }]),
+      '1': txPlayer('n2', 'Old Guard', { type: 'drop', source_team_key: '466.l.33458.t.1' }),
+      count: 2 } }] },
+    '1': { transaction: [{ transaction_key: 'x2', type: 'add', timestamp: String(now) }, { players: {
+      '0': txPlayer('n3', 'Their Guy', [{ type: 'add', destination_team_key: '466.l.33458.t.2' }]), count: 1 } }] },
+    count: 2 } }] } };
+
+  const r = await (await get('/api/week/review?week=3')).json();
+  assert.equal(r.week, 3, JSON.stringify(r));
+  assert.equal(r.final, true);
+  const pts = r.categories.find(c => c.name === 'PTS');
+  assert.equal(pts.result, 'W');
+  assert.equal(pts.mine, 300);
+  assert.equal(r.categories.find(c => c.name === 'REB').result, 'L');
+  assert.equal(r.categories.find(c => c.name === 'TO').result, 'L');   // computed: 30 TO vs 25
+  assert.equal(r.record.w + r.record.l + r.record.t, 9);
+  assert.ok(r.projection, 'graded against the projection saved by /api/week');
+  assert.ok(typeof r.categories[0].projWin === 'number');
+  assert.deepEqual(r.moves.map(m => `${m.type} ${m.name}`), ['add New Big', 'drop Old Guard']);
+  assert.ok(KV.has('snap:week:3:first') && KV.has('snap:week:3:last'));
+});

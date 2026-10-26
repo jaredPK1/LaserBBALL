@@ -35,7 +35,7 @@ export function yahooLine(stats) {
   };
 }
 
-function catValue(cat, line) {
+export function catValue(cat, line) {
   if (cat.pct) {
     const [m, a] = cat.pct;
     if (line[a] > 0) return line[m] / line[a];

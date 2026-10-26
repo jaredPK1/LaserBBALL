@@ -42,3 +42,19 @@ test('odds: bigger lead → higher win chance; fewer turnovers wins TO; no games
   const e = expectedWins(odds);
   assert.ok(e > 0 && e < 9);
 });
+
+test('real stats get more weight as the season goes on', async () => {
+  const { realWeight, ratesFor } = await import('../server/weekly.js');
+  assert.equal(realWeight(1), 0);
+  assert.ok(realWeight(2) > 0.1 && realWeight(2) < 0.25);
+  assert.ok(realWeight(8) > realWeight(4));
+  assert.ok(realWeight(30) <= 0.8);
+  const espn = new Map([['test guy', { name: 'Test Guy', projected: true, pts: 10, reb: 5, ast: 2, stl: 1, blk: 1, tpm: 1, to: 1, fgm: 4, fga: 9, ftm: 1, fta: 2 }]]);
+  const player = { name: 'Test Guy', stats: { '9004003': '8/16', '9007006': '2/2', '10': '2', '12': '20', '15': '9', '16': '2', '17': '1', '18': '1', '19': '1' } };
+  assert.equal(ratesFor(player, espn, 0).rates.pts, 10);         // no games yet: projection only
+  const half = ratesFor(player, espn, 0.5);
+  assert.equal(half.rates.pts, 15);
+  assert.equal(half.rates.reb, 7);
+  assert.match(half.src, /50% this season/);
+  assert.equal(ratesFor({ name: 'Nobody', stats: player.stats }, espn, 0.5).rates.pts, 20); // no projection: actual
+});

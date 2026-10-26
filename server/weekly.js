@@ -114,11 +114,25 @@ export const rosOf = (name, espn) => {
 };
 
 // Per-game rates: ESPN's projection (updated in-season), else Yahoo's season average
-export function ratesFor(p, espn) {
+// How much to trust this season's actual per-game stats over ESPN's
+// projection: ~3.4 games per completed week, half-and-half around 15 games,
+// capped so one hot month doesn't erase the projection entirely
+export function realWeight(currentWeek) {
+  const games = 3.4 * Math.max(0, (Number(currentWeek) || 1) - 1);
+  return Math.min(0.8, games / (games + 15));
+}
+
+// Per-game rates: ESPN projection blended with Yahoo's season average by
+// weight w; either alone when the other is missing
+export function ratesFor(p, espn, w = 0) {
   const e = espn.get(normName(p.name));
-  if (e) return { src: e.projected ? 'projection' : 'last season', rates: Object.fromEntries(KEYS.map(k => [k, e[k] || 0])) };
   const y = yahooLine(p.stats || {});
-  return { src: y.pts > 0 ? 'season avg' : 'none', rates: Object.fromEntries(KEYS.map(k => [k, y[k] || 0])) };
+  const hasReal = y.pts > 0 || y.fga > 0;
+  if (e && hasReal && w > 0) {
+    return { src: `${Math.round(w * 100)}% this season`, rates: Object.fromEntries(KEYS.map(k => [k, (1 - w) * (e[k] || 0) + w * (y[k] || 0)])) };
+  }
+  if (e) return { src: e.projected ? 'projection' : 'last season', rates: Object.fromEntries(KEYS.map(k => [k, e[k] || 0])) };
+  return { src: hasReal ? 'season avg' : 'none', rates: Object.fromEntries(KEYS.map(k => [k, y[k] || 0])) };
 }
 
 export const availability = (p) => (IL_SLOTS.has(p.slot) || OUT.has(p.status) ? 0 : p.status === 'GTD' || p.status === 'DTD' ? 0.6 : 1);
@@ -206,12 +220,13 @@ async function weekState(req, res) {
     opp ? roster(req, res, opp.key, rosterDate) : [],
     startDay <= bounds.end ? gamesBetween(startDay, bounds.end) : [],
   ]);
+  const w = realWeight(ctx.currentWeek);
   const toPlayer = (p, extra = {}) => {
-    const r = ratesFor(p, espn);
+    const r = ratesFor(p, espn, w);
     return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos || p.pos?.join(','), slot: p.slot, status: p.status, rates: r.rates, src: r.src, avail: availability(p), ...extra };
   };
   return {
-    ctx, week, bounds, today, startDay, espn,
+    ctx, week, bounds, today, startDay, espn, w,
     dates: startDay <= bounds.end ? datesBetween(startDay, bounds.end) : [],
     gamesByTeam: teamGames(games),
     me, opp, oppNick,
@@ -235,7 +250,7 @@ export async function weekProjection(req, res) {
     gamesCounted: Math.round((proj.gamesUsed.get(p.id) || 0) * 10) / 10,
   }));
   return {
-    week: st.week, start: st.bounds.start, end: st.bounds.end, projectingFrom: st.startDay,
+    week: st.week, start: st.bounds.start, end: st.bounds.end, projectingFrom: st.startDay, actualWeight: st.w,
     me: { name: st.me?.name }, opp: st.opp ? { name: st.opp.name, manager: st.oppNick } : null,
     categories: odds,
     expectedWins: expectedWins(odds),
@@ -305,7 +320,7 @@ export async function weekStreamers(req, res) {
   const fas = (await freeAgents(req, res, st.ctx.leagueKey))
     .filter(p => !OUT.has(p.status))
     .map(p => {
-      const r = ratesFor(p, st.espn);
+      const r = ratesFor(p, st.espn, st.w);
       return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, status: p.status, rates: r.rates, src: r.src, avail: availability(p), from: addFrom, ...rosOf(p.name, st.espn) };
     })
     .filter(p => p.src !== 'none');

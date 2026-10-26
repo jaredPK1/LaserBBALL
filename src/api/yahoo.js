@@ -114,6 +114,9 @@ export const getWeek = (week) =>
 export const getStreamers = (week) =>
   apiCall(() => axios.get(`${BASE}/week/streamers${week ? `?week=${week}` : ''}`, { timeout: 60000 }));
 
+export const getReview = (week) =>
+  apiCall(() => axios.get(`${BASE}/week/review${week ? `?week=${week}` : ''}`, { timeout: 60000 }));
+
 export const getAlerts = () =>
   apiCall(() => axios.get(`${BASE}/alerts`, { timeout: 60000 }));
 

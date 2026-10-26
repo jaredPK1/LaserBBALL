@@ -6,6 +6,7 @@ import { getSchedule, gamesBetween, byTeam, getScoreboard, etDate, addDays } fro
 import { gameNight } from './gamenight.js';
 import { weekProjection, weekStreamers } from './weekly.js';
 import { alerts, playoffs, trade } from './manage.js';
+import { weekReview } from './review.js';
 import { draftPool } from './draft.js';
 import { espnDraftPool, loadPool } from './espn.js';
 import { evaluateStrategy, STRATEGIES, simulateSeason } from '../src/draft/sim.js';
@@ -178,13 +179,23 @@ const snapshot = (name, fn) => async (req, res) => {
   const out = await fn(req, res);
   // Awaited: Vercel can stop a function as soon as the response is sent
   if (storeConfigured() && out) {
-    await setJson(`snap:${name}`, { savedAt: new Date().toISOString(), ...out }).catch(e => console.error(`snapshot ${name}:`, e.message));
+    const doc = { savedAt: new Date().toISOString(), ...out };
+    const saves = [setJson(`snap:${name}`, doc)];
+    // Per-week copies for the weekly review: the first projection of each
+    // week (what we grade against) and the latest one
+    if (name === 'week' && out.week) {
+      saves.push(setJson(`snap:week:${out.week}:last`, doc));
+      const first = await getJson(`snap:week:${out.week}:first`).catch(() => null);
+      if (!first) saves.push(setJson(`snap:week:${out.week}:first`, doc));
+    }
+    await Promise.all(saves).catch(e => console.error(`snapshot ${name}:`, e.message));
   }
   return out;
 };
 app.get('/api/week', wrap(snapshot('week', weekProjection)));
 app.get('/api/week/streamers', wrap(snapshot('streamers', weekStreamers)));
 app.get('/api/alerts', wrap(snapshot('alerts', alerts)));
+app.get('/api/week/review', wrap(weekReview));
 app.get('/api/playoffs', wrap(playoffs));
 app.get('/api/trade', wrap(trade));
 app.get('/api/draft/pool', wrap(draftPool));

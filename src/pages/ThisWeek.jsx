@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getWeek, getStreamers } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import AlertsCard from '../components/AlertsCard';
+import ReviewCard from '../components/ReviewCard';
 
 const VERDICT = {
   locked: ['Locked', 'tag-green'],
@@ -66,6 +67,7 @@ export default function ThisWeek() {
       />
 
       <AlertsCard />
+      <ReviewCard />
 
       <div className="tw-head card">
         <div>
@@ -105,7 +107,7 @@ export default function ThisWeek() {
         </table>
       </div>
       <p className="meta" style={{ margin: '6px 0 20px' }}>
-        Projects from {dayLabel(week.projectingFrom)} to {dayLabel(week.end)}: everyone’s games left, at most 10 starters a day, per-game rates from ESPN projections.
+        Projects from {dayLabel(week.projectingFrom)} to {dayLabel(week.end)}: everyone’s games left, at most 10 starters a day. Per-game rates: {week.actualWeight > 0 ? `${Math.round(week.actualWeight * 100)}% this season’s actual stats, ${100 - Math.round(week.actualWeight * 100)}% ESPN projection` : 'ESPN projections (actual stats blend in from week 2)'}.
         {week.unrated?.length > 0 && ` No stats yet for ${week.unrated.join(', ')}.`}
       </p>
 

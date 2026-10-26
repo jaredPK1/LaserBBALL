@@ -6,7 +6,7 @@ import { roster } from './gamenight.js';
 import { availability as durability } from '../src/draft/engine.js';
 import {
   IL_SLOTS, IL_ELIGIBLE, OUT, KEEP_RANK, espnRates, rosOf, ratesFor, availability, gameVar,
-  freeAgents, teamGames, nick, categoryOdds, expectedWins,
+  freeAgents, teamGames, nick, categoryOdds, expectedWins, realWeight,
 } from './weekly.js';
 
 const IL_CAPACITY = 2;
@@ -174,7 +174,7 @@ async function leagueRosters(req, res, ctx, espn) {
     return {
       key: info.team_key, name: info.name, manager: nick(node), mine: info.team_key === ctx.teamKey,
       players: players.map(p => {
-        const r = ratesFor(p, espn);
+        const r = ratesFor(p, espn, realWeight(ctx.currentWeek));
         return {
           key: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, slot: p.slot, status: p.status,
           rates: r.rates, src: r.src, avail: availability(p),
