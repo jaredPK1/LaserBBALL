@@ -143,3 +143,6 @@ export const getTradeIdeas = () =>
 
 export const getPower = (week) =>
   apiCall(() => axios.get(`${BASE}/race/power${week ? `?week=${week}` : ''}`, { timeout: 60000 }));
+
+export const sendExport = () =>
+  apiCall(() => axios.get(`${BASE}/export`, { timeout: 90000 }));

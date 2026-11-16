@@ -450,3 +450,18 @@ test('league: every matchup projected, standings after the week, power rankings'
   assert.ok(mine.notes.length >= 2, JSON.stringify(mine.notes));
   assert.deepEqual(KV.get('snap:power:2').ranks.map(x => x.rank).sort(), [1, 2]);
 });
+
+test('export: one league snapshot saved for Claude, sections fail independently', async () => {
+  const r = await get('/api/export');
+  const d = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(d));
+  assert.equal(d.stored, true);
+  const doc = KV.get('snap:export');
+  assert.equal(doc.league.key, '466.l.33458');
+  assert.ok(Array.isArray(doc.rosters) && doc.rosters.length === 2, JSON.stringify(doc.rosters));
+  assert.ok(doc.weeks.error || doc.weeks.length === 3 || doc.weeks.length >= 1);
+  assert.ok(doc.transactions.error, 'no transactions fixture: reported, not fatal');
+  assert.match(d.sections.transactions, /^error/);
+  const f = await get('/api/export?download=1');
+  assert.match(f.headers.get('content-disposition'), /attachment; filename="league-week-3.json"/);
+});

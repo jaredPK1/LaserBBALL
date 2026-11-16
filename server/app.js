@@ -8,6 +8,7 @@ import { weekProjection, weekStreamers } from './weekly.js';
 import { alerts, playoffs, trade, tradeIdeas } from './manage.js';
 import { weekReview } from './review.js';
 import { leagueWeek, powerWeek } from './league.js';
+import { exportLeague } from './export.js';
 import { draftPool } from './draft.js';
 import { espnDraftPool, loadPool } from './espn.js';
 import { evaluateStrategy, STRATEGIES, simulateSeason } from '../src/draft/sim.js';
@@ -202,6 +203,7 @@ app.get('/api/trade', wrap(trade));
 app.get('/api/trade/ideas', wrap(tradeIdeas));
 app.get('/api/race/week', wrap(leagueWeek));
 app.get('/api/race/power', wrap(powerWeek));
+app.get('/api/export', wrap(exportLeague));
 app.get('/api/draft/pool', wrap(draftPool));
 app.get('/api/draft/espn', wrap(espnDraftPool));
 // Grade real rosters: match names to the ESPN pool, then simulate many seasons (all-play H2H 9-cat).

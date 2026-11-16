@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getLeagueWeek, getPower } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
+import SendToClaude from '../components/SendToClaude';
 
 const pctStr = p => `${Math.round(p * 100)}%`;
 const fmt = (c, v) => (v == null ? '–' : c.pct ? v.toFixed(3).replace(/^0/, '') : Math.round(v));
@@ -27,6 +28,7 @@ export default function League() {
       {error ? <div className="error-state"><h3>Couldn’t load the league</h3><p>{error}</p></div>
         : !week ? <div className="loading-container">{Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton skeleton-row" />)}</div>
           : <WeekView week={week} />}
+      <SendToClaude />
     </div>
   );
 }
