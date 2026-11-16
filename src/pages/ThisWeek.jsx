@@ -170,7 +170,7 @@ export default function ThisWeek() {
               {streams.dropOptions?.length > 0 && (
                 <details className="tw-drops">
                   <summary>Who can I drop?</summary>
-                  <p className="settings-note">Rest-of-season rank among all players for your build (assists punted). Top {8 * 13 + 6} = worth keeping in an 8-team league.</p>
+                  <p className="settings-note">Rest-of-season rank among all players for your build (assists punted), from this season’s real stats blended with ESPN’s projection. Top {8 * 13 + 6} = worth keeping in an 8-team league.</p>
                   <table className="gn-cats">
                     <thead><tr><th>Player</th><th>Advice</th><th>Season rank</th><th>This week</th></tr></thead>
                     <tbody>

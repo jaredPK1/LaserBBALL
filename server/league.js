@@ -131,7 +131,7 @@ export async function leagueWeek(req, res) {
   const w = realWeight(ctx.currentWeek);
   const fas = faList.filter(p => !OUT.has(p.status)).map(p => {
     const r = ratesFor(p, espn, w);
-    return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, status: p.status, rates: r.rates, src: r.src, avail: availability(p), ...rosOf(p.name, espn) };
+    return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, status: p.status, rates: r.rates, src: r.src, avail: availability(p), ...rosOf(p.name, espn, r.rates) };
   }).filter(p => p.src !== 'none' && p.rosValue != null)
     .sort((a, b) => b.rosValue - a.rosValue).slice(0, 10);
   const ripple = dates.length && addFrom <= bounds.end ? freeAgentRipple(fas, projected, rosters, gamesByTeam, dates, addFrom) : [];

@@ -46,9 +46,9 @@ test('odds: bigger lead → higher win chance; fewer turnovers wins TO; no games
 test('real stats get more weight as the season goes on', async () => {
   const { realWeight, ratesFor } = await import('../server/weekly.js');
   assert.equal(realWeight(1), 0);
-  assert.ok(realWeight(2) > 0.1 && realWeight(2) < 0.25);
+  assert.ok(realWeight(2) > 0.2 && realWeight(2) < 0.35);
   assert.ok(realWeight(8) > realWeight(4));
-  assert.ok(realWeight(30) <= 0.8);
+  assert.ok(realWeight(30) <= 0.85);
   const espn = new Map([['test guy', { name: 'Test Guy', projected: true, pts: 10, reb: 5, ast: 2, stl: 1, blk: 1, tpm: 1, to: 1, fgm: 4, fga: 9, ftm: 1, fta: 2 }]]);
   const player = { name: 'Test Guy', stats: { '9004003': '8/16', '9007006': '2/2', '10': '2', '12': '20', '15': '9', '16': '2', '17': '1', '18': '1', '19': '1' } };
   assert.equal(ratesFor(player, espn, 0).rates.pts, 10);         // no games yet: projection only
@@ -57,6 +57,29 @@ test('real stats get more weight as the season goes on', async () => {
   assert.equal(half.rates.reb, 7);
   assert.match(half.src, /50% this season/);
   assert.equal(ratesFor({ name: 'Nobody', stats: player.stats }, espn, 0.5).rates.pts, 20); // no projection: actual
+  // Yahoo's games played beats the week estimate: 24 games → 75% actual
+  assert.equal(ratesFor({ ...player, stats: { ...player.stats, '0': '24' } }, espn, 0.1).rates.pts, 17.5);
+});
+
+test('season rank follows real stats, not just the projection', async () => {
+  const { rosOf } = await import('../server/weekly.js');
+  const { computeValues } = await import('../src/draft/engine.js');
+  // Every category gets worse with i, so value order = i order
+  const line = (pts, stl, i = 0) => ({ pts, stl, reb: 9 - i * 0.04, ast: 3, blk: 1.5 - i * 0.008, tpm: 3 - i * 0.015, to: 1 + i * 0.005,
+    fga: pts / 2.2, fgm: (pts / 2.2) * (0.52 - i * 0.0005), fta: 4 - i * 0.02, ftm: (4 - i * 0.02) * (0.85 - i * 0.0005) });
+  const nm = i => `Guy ${String.fromCharCode(97 + Math.floor(i / 26))}${String.fromCharCode(97 + (i % 26))}`;
+  const pool = Array.from({ length: 150 }, (_, i) => ({ name: nm(i), ...line(25 - i * 0.12, 1.5 - i * 0.006, i), yahooRank: i + 1 }));
+  const valued = computeValues(pool, { teams: 8, rounds: 13 });
+  const { normName } = await import('../server/nba.js');
+  const espn = new Map(valued.map(p => [normName(p.name), { ...p, rosValue: p.value, rosRank: p.valueRank }]));
+  espn.score = valued.scorer;
+  espn.values = valued.map(p => p.value);
+  const proj = rosOf(nm(20), espn);
+  assert.equal(proj.rosRank, 21);
+  const cold = rosOf(nm(20), espn, line(10, 0.4, 140));      // playing far below his projection
+  assert.ok(cold.rosRank > 100, String(cold.rosRank));
+  const hot = rosOf(nm(120), espn, line(24, 1.5, 5));      // free agent playing like a starter
+  assert.ok(hot.rosRank < 20, String(hot.rosRank));
 });
 
 test('league ripple: standings projection, rooting interest, free-agent value per team', async () => {

@@ -180,7 +180,7 @@ export async function leagueRosters(req, res, ctx, espn) {
           rates: r.rates, src: r.src, avail: availability(p),
           // Season view: injured players come back, so discount instead of zeroing
           seasonAvail: OUT.has(p.status) ? 0.75 : ['GTD', 'DTD'].includes(p.status) ? 0.95 : 1,
-          durability: durabilityOf(p.name, espn), ...rosOf(p.name, espn),
+          durability: durabilityOf(p.name, espn), ...rosOf(p.name, espn, r.rates),
         };
       }),
     };
@@ -306,7 +306,7 @@ export async function tradeIdeas(req, res) {
   const w = realWeight(ctx.currentWeek);
   const fas = faList.filter(p => !OUT.has(p.status)).map(p => {
     const r = ratesFor(p, espn, w);
-    return { key: p.key, name: p.name, rates: r.rates, avail: 1, seasonAvail: 1, durability: durabilityOf(p.name, espn), ...rosOf(p.name, espn) };
+    return { key: p.key, name: p.name, rates: r.rates, avail: 1, seasonAvail: 1, durability: durabilityOf(p.name, espn), ...rosOf(p.name, espn, r.rates) };
   }).filter(p => p.rosValue != null);
   return { ideas: findTrades(me, teams, { fas }), searched: teams.length - 1 };
 }

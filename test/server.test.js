@@ -24,6 +24,7 @@ const player = (key, name, team, pos, slot, st, status) => ({
     { player_stats: stats(st) },
   ],
 });
+const weak = { '9004003': '1/6', '5': '.167', '9007006': '0/0', '8': '.000', '10': '0', '12': '3', '15': '1', '16': '1', '17': '0', '18': '0', '19': '1' };
 const avg = { '9004003': '8/16', '5': '.500', '9007006': '4/5', '8': '.800', '10': '2', '12': '22', '15': '6', '16': '5', '17': '1', '18': '1', '19': '2' };
 const roster = (players) => ({ fantasy_content: { team: [[{ team_key: 'x' }], { roster: { '0': { players: Object.assign({ count: players.length }, ...players.map((p, i) => ({ [i]: p }))) } } }] } });
 const teamNode = (key, name, mine, st) => ({ team: [[{ team_key: key }, { name }, ...(mine ? [{ is_owned_by_current_login: 1 }] : [])], { team_stats: stats(st) }] });
@@ -46,12 +47,12 @@ const FIX = {
   'league/466.l.33458/settings': { fantasy_content: { league: [{ league_key: '466.l.33458' }, { settings: [{ playoff_start_week: '19' }] }] } },
   [`team/466.l.33458.t.1/roster;date=${today}/players/stats;type=average_season`]: roster([
     player('p1', 'Jayson Tatum', 'BOS', 'SF,PF', 'SF', avg),
-    player('p2', 'Bench Guy', 'BOS', 'PG', 'BN', avg),
+    player('p2', 'Bench Guy', 'BOS', 'PG', 'BN', weak),
     player('p3', 'Idle Man', 'LAL', 'C', 'C', avg),
   ]),
   [`team/466.l.33458.t.1/roster;date=${addDays(today, 1)}/players/stats;type=average_season`]: roster([
     player('p1', 'Jayson Tatum', 'BOS', 'SF,PF', 'SF', avg),
-    player('p2', 'Bench Guy', 'LAL', 'PG', 'BN', avg),
+    player('p2', 'Bench Guy', 'LAL', 'PG', 'BN', weak),
     player('p3', 'Idle Man', 'BOS', 'C', 'C', avg),
   ]),
   [`team/466.l.33458.t.2/roster;date=${today}/players/stats;type=average_season`]: roster([player('o1', 'Nikola Jokić', 'DEN', 'C', 'C', avg)]),

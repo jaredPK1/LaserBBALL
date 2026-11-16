@@ -89,13 +89,18 @@ export function computeValues(players, { teams = 10, rounds = 13, weights = DEFA
   const valued = withStats
     .map((p, i) => ({ ...p, z: zs[i], value: total(zs[i], weights) }))
     .sort((a, b) => b.value - a.value);
+  const finalRef = ref;
   valued.forEach((p, i) => { p.valueRank = i + 1; });
   assignTiers(valued);
 
   const rest = without
     .sort((a, b) => (a.yahooRank ?? 999) - (b.yahooRank ?? 999))
     .map(p => ({ ...p, z: null, value: null, valueRank: null, tier: null }));
-  return [...valued, ...rest];
+  const out = [...valued, ...rest];
+  // Value any stat line (e.g. one blended with this season's actual stats)
+  // on the same scale as the pool
+  out.scorer = line => total(zScores([line], finalRef)[0], weights);
+  return out;
 }
 
 // New tier when the value drop to the next player is large relative to local spread

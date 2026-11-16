@@ -7,7 +7,7 @@ import { gamesBetween, etDate, addDays, nbaTeam, normName } from './nba.js';
 import { loadPool } from './espn.js';
 import { CATS, yahooLine, roster, weekBounds } from './gamenight.js';
 import { storeConfigured, listJson } from './store.js';
-import { computeValues } from '../src/draft/engine.js';
+import { computeValues, availability as durability } from '../src/draft/engine.js';
 
 const ACTIVE_SLOTS = 10;   // PG,SG,G,SF,PF,F,C,C,Util,Util
 const TEAMS = 8, ROUNDS = 13;
@@ -104,29 +104,45 @@ export async function espnRates() {
     const valued = computeValues(players.filter(p => p.hasStats), { teams: TEAMS, rounds: ROUNDS, weights: ROS_WEIGHTS });
     const m = new Map();
     for (const p of valued) m.set(normName(p.name), { ...p, rosValue: p.value, rosRank: p.valueRank });
+    m.score = valued.scorer;
+    m.values = valued.filter(p => p.value != null).map(p => p.value);
     return m;
   } catch { return new Map(); }
 }
 
-export const rosOf = (name, espn) => {
+// Rest-of-season value and rank. Given the per-game rates actually used
+// (projection blended with this season's stats), values those, so a player
+// far off his projection is ranked on what he's really doing.
+const COUNTING = KEYS;
+export const rosOf = (name, espn, rates) => {
   const e = espn.get(normName(name));
+  if (rates && espn.score && (rates.pts > 0 || rates.fga > 0)) {
+    const a = e ? durability(e) : 1;
+    const v = espn.score(Object.fromEntries(COUNTING.map(k => [k, (rates[k] || 0) * a])));
+    const below = espn.values.findIndex(x => x < v);
+    return { rosValue: v, rosRank: below === -1 ? espn.values.length + 1 : below + 1 };
+  }
   return e ? { rosValue: e.rosValue, rosRank: e.rosRank } : { rosValue: null, rosRank: null };
 };
 
 // Per-game rates: ESPN's projection (updated in-season), else Yahoo's season average
 // How much to trust this season's actual per-game stats over ESPN's
-// projection: ~3.4 games per completed week, half-and-half around 15 games,
-// capped so one hot month doesn't erase the projection entirely
+// projection: half-and-half at 8 games, capped so a hot month doesn't erase
+// the projection entirely. By each player's games played when Yahoo gives
+// it, else ~3.4 games per completed week.
+const HALF_AT = 8, MAX_REAL = 0.85;
+export const gamesWeight = games => (games > 0 ? Math.min(MAX_REAL, games / (games + HALF_AT)) : 0);
 export function realWeight(currentWeek) {
-  const games = 3.4 * Math.max(0, (Number(currentWeek) || 1) - 1);
-  return Math.min(0.8, games / (games + 15));
+  return gamesWeight(3.4 * Math.max(0, (Number(currentWeek) || 1) - 1));
 }
 
 // Per-game rates: ESPN projection blended with Yahoo's season average by
 // weight w; either alone when the other is missing
-export function ratesFor(p, espn, w = 0) {
+export function ratesFor(p, espn, wWeek = 0) {
   const e = espn.get(normName(p.name));
   const y = yahooLine(p.stats || {});
+  const gp = Number(p.stats?.['0']) || 0;
+  const w = gp ? gamesWeight(gp) : wWeek;
   const hasReal = y.pts > 0 || y.fga > 0;
   if (e && hasReal && w > 0) {
     return { src: `${Math.round(w * 100)}% this season`, rates: Object.fromEntries(KEYS.map(k => [k, (1 - w) * (e[k] || 0) + w * (y[k] || 0)])) };
@@ -303,7 +319,7 @@ export async function weekStreamers(req, res) {
   // players, pick the lowest rest-of-season value; this week's cost is shown
   // alongside. Injured players are better moved to IL than dropped.
   const options = st.mine.filter(p => !IL_SLOTS.has(p.slot)).map(p => {
-    const ros = rosOf(p.name, st.espn);
+    const ros = rosOf(p.name, st.espn, p.rates);
     const keeper = ros.rosRank == null || ros.rosRank <= KEEP_RANK;
     return {
       p, ...ros, keeper,
@@ -321,7 +337,7 @@ export async function weekStreamers(req, res) {
     .filter(p => !OUT.has(p.status))
     .map(p => {
       const r = ratesFor(p, st.espn, st.w);
-      return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, status: p.status, rates: r.rates, src: r.src, avail: availability(p), from: addFrom, ...rosOf(p.name, st.espn) };
+      return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos, status: p.status, rates: r.rates, src: r.src, avail: availability(p), from: addFrom, ...rosOf(p.name, st.espn, r.rates) };
     })
     .filter(p => p.src !== 'none');
 
