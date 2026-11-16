@@ -16,7 +16,7 @@ export default function SendToClaude() {
         <h3>Send league data to Claude</h3>
         <button className="btn btn-primary btn-sm" onClick={send} disabled={busy}>{busy ? 'Gathering… (up to a minute)' : 'Send'}</button>
       </div>
-      <p className="settings-note">Saves standings, every week’s category results, all rosters, this week’s projections, power rankings and league transactions where Claude can read them. Press it, then tell Claude it’s sent.</p>
+      <p className="settings-note">Saves standings, every week’s category results, all rosters, this week’s projections, every free agent ranked for this week, power rankings and league transactions where Claude can read them. Press it, then tell Claude it’s sent.</p>
       {state && !state.ok && <p className="settings-verdict settings-err">{state.error}</p>}
       {state?.ok && (
         <p className={`settings-verdict ${failed.length || !state.stored ? 'settings-warn' : 'settings-ok'}`}>

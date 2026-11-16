@@ -306,7 +306,7 @@ export async function freeAgents(req, res, lk) {
   return [...seen.values()];
 }
 
-export async function weekStreamers(req, res) {
+export async function weekStreamers(req, res, { limit = 15 } = {}) {
   const st = await weekState(req, res);
   const oppProj = projectRemaining(st.theirs, st.gamesByTeam, st.dates);
   const evalRoster = list => expectedWins(categoryOdds(st.cur, projectRemaining(list, st.gamesByTeam, st.dates), oppProj));
@@ -371,7 +371,7 @@ export async function weekStreamers(req, res) {
       name: o.p.name, pos: o.p.pos, status: o.p.status, rosRank: o.rosRank, keeper: o.keeper, injured: o.injured, weekCost: o.weekCost,
       advice: o.ilEligible ? 'Move to IL' : o.keeper ? (o.injured ? 'Keep (bench)' : 'Keep') : 'Droppable',
     })),
-    streamers: ranked.slice(0, 15),
+    streamers: ranked.slice(0, limit),
     considered: fas.length,
   };
 }

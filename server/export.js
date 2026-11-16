@@ -6,7 +6,7 @@ import { yget, merge, each, parseTeamInfo, myContext } from './yahoo.js';
 import { etDate } from './nba.js';
 import { CATS, yahooLine, catValue } from './gamenight.js';
 import { historySeason } from './history.js';
-import { espnRates } from './weekly.js';
+import { espnRates, weekStreamers } from './weekly.js';
 import { leagueRosters } from './manage.js';
 import { leagueWeek, powerWeek } from './league.js';
 import { storeConfigured, setJson } from './store.js';
@@ -56,13 +56,15 @@ export async function buildExport(req, res) {
   const espn = await espnRates();
   req.params = { ...req.params, leagueKey: lk };
 
-  const [season, weeks, rosters, thisWeek, power, tx] = await Promise.all([
+  const [season, weeks, rosters, thisWeek, power, tx, adds] = await Promise.all([
     settle(historySeason(req, res)),
     settle(Promise.all(played.map(w => weekResults(req, res, lk, w).then(m => ({ week: w, matchups: m }))))),
     settle(leagueRosters(req, res, ctx, espn)),
     settle(leagueWeek(req, res)),
     settle(powerWeek(req, res)),
     settle(yget(req, res, `league/${lk}/transactions`).then(parseTransactions)),
+    // Every free agent checked for this week (games left, gain vs your opponent)
+    settle(weekStreamers(req, res, { limit: 100 })),
   ]);
 
   return {
@@ -78,6 +80,7 @@ export async function buildExport(req, res) {
     thisWeek,
     power,
     transactions: tx,
+    bestAdds: adds,
   };
 }
 

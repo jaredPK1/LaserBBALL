@@ -463,6 +463,8 @@ test('export: one league snapshot saved for Claude, sections fail independently'
   assert.ok(doc.weeks.error || doc.weeks.length === 3 || doc.weeks.length >= 1);
   assert.ok(doc.transactions.error, 'no transactions fixture: reported, not fatal');
   assert.match(d.sections.transactions, /^error/);
+  assert.equal(d.sections.bestAdds, 'ok');
+  assert.ok(doc.bestAdds.streamers.length >= 1 && doc.bestAdds.streamers[0].gamesLeft != null, JSON.stringify(doc.bestAdds));
   const f = await get('/api/export?download=1');
   assert.match(f.headers.get('content-disposition'), /attachment; filename="league-week-3.json"/);
 });
