@@ -43,6 +43,7 @@ export function authRedirect(req, res) {
   const state = crypto.randomBytes(16).toString('hex');
   setCookie(req, res, 'hi_state', state, 600);
   setCookie(req, res, 'hi_next', safeNext(req.query.next), 600);
+  setCookie(req, res, 'hi_write', req.query.write ? '1' : '', 600);
   const params = new URLSearchParams({
     client_id: id,
     redirect_uri: redirectUri(req),
@@ -50,7 +51,9 @@ export function authRedirect(req, res) {
     language: 'en-us',
     // Ask for Fantasy read explicitly; without it Yahoo can issue a token that
     // lacks fantasy access when the app has other permissions (403 "not authorized")
-    scope: process.env.YAHOO_SCOPE || 'fspt-r',
+    // ?write=1 asks for roster edits too (the lineup setter); the Yahoo app
+    // itself must be set to Fantasy Sports Read/Write for that to work
+    scope: req.query.write ? 'fspt-w' : (process.env.YAHOO_SCOPE || 'fspt-r'),
     state,
   });
   if (req.query.switch) params.set('prompt', 'login');
@@ -88,7 +91,10 @@ export async function handleCallback(req, res) {
     return res.status(400).send('OAuth state mismatch — start again from the Connect page.');
   }
   const tokens = await tokenRequest(req, { grant_type: 'authorization_code', code: String(code) });
-  saveSession(req, res, { ...tokens, login_at: Date.now() });
+  const scope = tokens.scope || (parseCookies(req).hi_write === '1' ? 'fspt-w' : 'fspt-r');
+  saveSession(req, res, { ...tokens, scope, login_at: Date.now() });
+  await saveOwner({ ...tokens, scope });
+  setCookie(req, res, 'hi_write', '', 0);
   if (tokens.guid && storeConfigured()) {
     await setJson(tokenKey(tokens), { at: seal({ at: tokens.access_token }), exp: tokens.expires_at }).catch(() => {});
   }
@@ -131,10 +137,26 @@ async function refresh(req, res, s) {
   const t = await tokenRequest(req, { grant_type: 'refresh_token', refresh_token: s.refresh_token });
   const next = { ...t, refresh_token: t.refresh_token || s.refresh_token, login_at: s.login_at, scope: t.scope || s.scope, guid: t.guid || s.guid };
   saveSession(req, res, next);
+  await saveOwner(next);
   if (next.guid && storeConfigured()) {
     await setJson(tokenKey(next), { at: seal({ at: next.access_token }), exp: next.expires_at }).catch(() => {});
   }
   return next.access_token;
+}
+
+// The owner's login, kept encrypted server-side so the nightly lineup job can
+// act without a browser (this is a one-user app). Latest login wins.
+const OWNER = 'auth:owner';
+async function saveOwner(t) {
+  if (!storeConfigured() || !t.refresh_token) return;
+  const doc = { refresh_token: t.refresh_token, guid: t.guid || null, client: t.client || clientTag(), scope: t.scope || null, login_at: t.login_at || Date.now() };
+  await setJson(OWNER, { s: seal(doc) }).catch(() => {});
+}
+export async function ownerSession() {
+  if (!storeConfigured()) return null;
+  const row = await getJson(OWNER);
+  const s = row?.s ? unseal(row.s) : null;
+  return s?.refresh_token && s.client === clientTag() ? s : null;
 }
 
 async function accessToken(req, res, force = false) {
@@ -174,6 +196,19 @@ export async function yget(req, res, path) {
       throw Object.assign(new Error(`Yahoo API ${r.status} on ${path}: ${text.slice(0, 300)}`), { status: r.status === 401 ? 401 : 502 });
     }
     return JSON.parse(text);
+  }
+}
+
+// Write to the Fantasy API (XML body), e.g. setting a lineup. Needs the
+// fspt-w scope; Yahoo answers 401/403 for read-only tokens.
+export async function yput(req, res, path, xml) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await accessToken(req, res, attempt > 0);
+    const r = await fetch(`${API}${path}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/xml' }, body: xml });
+    if (r.status === 401 && attempt === 0) continue;
+    const text = await r.text();
+    if (!r.ok) throw Object.assign(new Error(`Yahoo API ${r.status} on ${path}: ${text.slice(0, 300)}`), { status: 502 });
+    return text;
   }
 }
 

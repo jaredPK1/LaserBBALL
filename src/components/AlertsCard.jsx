@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import { getAlerts } from '../api/yahoo';
+import { getAlerts, applyLineup } from '../api/yahoo';
 
 // Injuries and tomorrow's lineup fixes. Lineups lock a day ahead in this
 // league, so "tomorrow" items are the ones you can still act on.
 export default function AlertsCard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(null);
+  const setLineup = () => {
+    setApplying(true);
+    applyLineup().then(r => setApplied(r.data)).catch(e => setApplied({ applied: false, reason: e.response?.data?.error || e.message })).finally(() => setApplying(false));
+  };
 
   useEffect(() => {
     let live = true;
@@ -28,6 +34,12 @@ export default function AlertsCard() {
           </li>
         ))}
       </ul>
+      {data.alerts.some(a => a.kind === 'lineup' && a.text.startsWith('Tomorrow')) && (
+        <div className="lineup-apply">
+          <button className="btn btn-primary btn-sm" onClick={setLineup} disabled={applying || applied?.applied}>{applying ? 'Setting…' : applied?.applied ? 'Lineup set ✓' : 'Set tomorrow’s lineup in Yahoo'}</button>
+          {applied && !applied.applied && <span className="settings-verdict settings-err"> {applied.reason}</span>}
+        </div>
+      )}
       {data.replacements?.length > 0 && (
         <>
           <p className="settings-note"><b>Best available replacements</b> (rest-of-season rank, closest positional fit first):</p>

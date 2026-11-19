@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fitsSlot, lineupSwaps, seasonStrength } from '../server/manage.js';
+import { fitsSlot, seasonStrength } from '../server/manage.js';
 
 test('slot eligibility', () => {
   assert.equal(fitsSlot('SF', ['PG', 'SG', 'G']), false);
@@ -10,25 +10,49 @@ test('slot eligibility', () => {
   assert.equal(fitsSlot('C', ['PF', 'C']), true);
 });
 
-test('lineup swaps respect positions and use each slot once', () => {
-  const plays = new Set(['bench PG', 'bench C', 'starter G']);
-  const P = (name, slot, pos, status = '') => ({ name, slot, pos, displayPos: pos.join(','), status });
+test('lineup: rearranges so a center fills a guard\'s vacated slot', async () => {
+  const { bestLineup, describe } = await import('../server/lineup.js');
+  const P = (name, slot, pos, status = '', v = 1) => ({ key: name, name, slot, pos, displayPos: pos.join(','), status, v });
+  // Kawhi (out) sits in G; Allen (C) is on the bench and can't take G directly
   const roster = [
-    P('idle SF', 'SF', ['SF']),
-    P('idle Util', 'Util', ['PG']),
-    P('out C', 'C', ['C'], 'O'),
-    P('starter G', 'G', ['PG']),
-    P('bench PG', 'BN', ['PG']),
-    P('bench C', 'BN', ['C']),
+    P('Mitchell', 'PG', ['PG', 'SG']), P('Braun', 'SG', ['SG', 'SF']), P('Kawhi', 'G', ['SG', 'SF', 'PF'], 'O', 9),
+    P('Jones', 'SF', ['SF', 'PF']), P('Buzelis', 'PF', ['SF', 'PF']), P('Powell', 'F', ['SG', 'SF']),
+    P('Lopez', 'C', ['C']), P('Turner', 'C', ['C']), P('NAW', 'Util', ['PG', 'SG']), P('Maxey', 'Util', ['PG'], 'O', 9),
+    P('Allen', 'BN', ['C'], '', 5), P('Sarr', 'BN', ['C'], '', 4), P('Reid', 'BN', ['PF', 'C'], '', 3),
+    P('Duren', 'IL', ['C'], 'O'),
   ];
-  const { swaps, stuck } = lineupSwaps(roster, p => plays.has(p.name));
-  assert.deepEqual(swaps.map(s => `${s.start}->${s.slot}`), ['bench PG->Util', 'bench C->C']);
-  assert.equal(swaps[1].reason, 'O');
-  assert.deepEqual(stuck, []);
-  // A guard can't fill the SF hole
-  const r2 = lineupSwaps([P('idle SF', 'SF', ['SF']), P('bench PG', 'BN', ['PG'])], p => p.name === 'bench PG');
-  assert.deepEqual(r2.swaps, []);
-  assert.deepEqual(r2.stuck, ['bench PG']);
+  const plan = bestLineup(roster, { plays: () => true, value: p => p.v });
+  const at = Object.fromEntries(plan.lineup.map(p => [p.name, p.slot]));
+  assert.equal(at.Kawhi, 'BN');
+  assert.equal(at.Maxey, 'BN');
+  assert.equal(at.Allen === 'BN' || at.Sarr === 'BN', false, JSON.stringify(at)); // both bigs start
+  assert.equal(plan.starters, 10);
+  assert.ok(!plan.lineup.some(p => p.name === 'Duren'), 'IL players are left alone');
+  assert.deepEqual(plan.idleStarters.sort(), ['Kawhi', 'Maxey']);
+  assert.ok(describe(plan.moves).includes('Bench Kawhi (O)'));
+  // Every starter fits his slot
+  const { fitsSlot } = await import('../server/lineup.js');
+  for (const p of plan.lineup.filter(x => x.slot !== 'BN')) assert.ok(fitsSlot(p.slot, roster.find(r => r.name === p.name).pos), p.name);
+});
+
+test('lineup: no game means bench, best players start, nothing moves when already right', async () => {
+  const { bestLineup } = await import('../server/lineup.js');
+  const P = (name, slot, pos, v) => ({ key: name, name, slot, pos, displayPos: pos.join(','), status: '', v });
+  const roster = [P('A', 'PG', ['PG'], 5), P('B', 'BN', ['PG'], 9), P('C', 'C', ['C'], 5)];
+  const plan = bestLineup(roster, { plays: p => p.name !== 'C', value: p => p.v });
+  const at = Object.fromEntries(plan.lineup.map(p => [p.name, p.slot]));
+  assert.equal(at.C, 'BN');                 // no game tonight
+  assert.ok(at.A !== 'BN' && at.B !== 'BN'); // both guards play (PG + G/Util)
+  const settled = plan.lineup.map(p => ({ ...roster.find(r => r.name === p.name), slot: p.slot }));
+  assert.equal(bestLineup(settled, { plays: p => p.name !== 'C', value: p => p.v }).moves.length, 0);
+});
+
+test('lineup XML for Yahoo escapes values', async () => {
+  const { rosterXml } = await import('../server/lineup.js');
+  const xml = rosterXml('2026-11-20', [{ key: '466.p.1', slot: 'PG' }, { key: '466.p.2', slot: 'BN' }]);
+  assert.match(xml, /<coverage_type>date<\/coverage_type><date>2026-11-20<\/date>/);
+  assert.match(xml, /<player><player_key>466\.p\.1<\/player_key><position>PG<\/position><\/player>/);
+  assert.match(rosterXml('x', [{ key: '<a>', slot: 'C' }]), /&#60;a&#62;/);
 });
 
 test('season strength rises when you add a better player', () => {

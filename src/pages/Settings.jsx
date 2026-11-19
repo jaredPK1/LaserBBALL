@@ -3,6 +3,7 @@ import axios from 'axios';
 import { startAuth, clearTokens, getYahooCheck } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import SendToClaude from '../components/SendToClaude';
+import NightlyLineup from '../components/NightlyLineup';
 
 // NBA seasons straddle two years; Yahoo labels them by the starting year
 const currentSeason = () => {
@@ -73,6 +74,7 @@ export default function Settings({ authed }) {
         <button className="btn btn-ghost btn-sm" onClick={runCheck} disabled={checking}>{checking ? 'Checking…' : 'Check again'}</button>
       </section>
 
+      <NightlyLineup />
       <SendToClaude />
 
       <section className="card">

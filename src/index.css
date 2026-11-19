@@ -512,3 +512,7 @@ select.input-sm { width: auto; }
 .lg-vs { text-align: center; }
 .trade-ideas { list-style: none; padding: 0; display: grid; gap: 10px; }
 .trade-ideas li { border: 1px solid var(--border, rgba(255,255,255,0.1)); border-radius: 8px; padding: 10px 12px; }
+
+/* Lineup setter */
+.lineup-modes { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.lineup-apply { margin: 8px 0; }

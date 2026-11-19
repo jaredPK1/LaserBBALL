@@ -22,7 +22,8 @@ export const isAuthenticated = () => !!authed;
 // account the browser is already signed into
 export const startAuth = (opts) => {
   const sw = opts?.switchAccount ? '&switch=1' : '';
-  window.location.href = `${BASE}/auth?next=${encodeURIComponent(window.location.pathname)}${sw}`;
+  const wr = opts?.write ? '&write=1' : '';
+  window.location.href = `${BASE}/auth?next=${encodeURIComponent(window.location.pathname)}${sw}${wr}`;
 };
 
 export const getYahooCheck = () => axios.get(`${BASE}/debug/yahoo`);
@@ -146,3 +147,15 @@ export const getPower = (week) =>
 
 export const sendExport = () =>
   apiCall(() => axios.get(`${BASE}/export`, { timeout: 90000 }));
+
+export const getLineupPlan = () =>
+  apiCall(() => axios.get(`${BASE}/lineup/plan`, { timeout: 60000 }));
+
+export const applyLineup = () =>
+  apiCall(() => axios.post(`${BASE}/lineup/apply`, null, { timeout: 60000 }));
+
+export const getLineupConfig = () =>
+  apiCall(() => axios.get(`${BASE}/lineup/config`));
+
+export const setLineupMode = (mode) =>
+  apiCall(() => axios.post(`${BASE}/lineup/config`, { mode }));

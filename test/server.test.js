@@ -141,6 +141,7 @@ before(async () => {
     }
     if (url.includes('fantasysports.yahooapis.com')) {
       const path = decodeURIComponent(url.split('/fantasy/v2/')[1].split('?')[0]);
+      if (opts?.method === 'PUT') return new Response('Please provide valid credentials', { status: 401 }); // read-only token
       if (FIX[path]) return json(FIX[path]);
       return new Response(`no fixture: ${path}`, { status: 400 });
     }
@@ -359,12 +360,13 @@ test('this week: category odds, opponent scouting from history, streamers', asyn
   assert.equal(s.addsLimit, 4);
 });
 
-test('alerts: no position-breaking lineup swap; playoff planner; trade checker', async () => {
+test('alerts: whole-lineup rearrange; playoff planner; trade checker', async () => {
   const a = await (await get('/api/alerts')).json();
   assert.ok(Array.isArray(a.alerts), JSON.stringify(a));
-  // Bench Guy (PG) plays tomorrow, but the idle starters are SF and C: no valid swap
-  assert.ok(!a.alerts.some(x => x.kind === 'lineup' && x.level === 'action'), JSON.stringify(a.alerts));
-  assert.ok(a.alerts.some(x => x.kind === 'lineup' && x.text.includes('Bench Guy')));
+  // Bench Guy (PG) plays tomorrow; the idle starters hold SF and C, which he
+  // can't fill, but a Util slot is open to him
+  const lu = a.alerts.find(x => x.kind === 'lineup' && x.level === 'action');
+  assert.ok(lu && lu.text.includes('Start Bench Guy at Util') && lu.text.includes('Bench Jayson Tatum (no game)'), JSON.stringify(a.alerts));
   assert.equal(a.ilCapacity, 2);
 
   const p = await (await get('/api/playoffs')).json();
@@ -450,6 +452,32 @@ test('league: every matchup projected, standings after the week, power rankings'
   assert.equal(mine.result.w + mine.result.l + mine.result.t, 9);
   assert.ok(mine.notes.length >= 2, JSON.stringify(mine.notes));
   assert.deepEqual(KV.get('snap:power:2').ranks.map(x => x.rank).sort(), [1, 2]);
+});
+
+test('lineup setter: plan, apply needs write access, nightly modes', async () => {
+  const plan = await (await get('/api/lineup/plan')).json();
+  assert.ok(plan.steps.includes('Start Bench Guy at Util'), JSON.stringify(plan));
+  // The fake Yahoo answers PUTs like a read-only token
+  const ap = await (await realFetch(`${base}/api/lineup/apply`, { method: 'POST', headers: { cookie } })).json();
+  assert.equal(ap.applied, false);
+  assert.match(ap.reason, /permission to edit your roster/);
+  // Modes are stored; the cron runs on the saved owner login, not a cookie
+  const set = await realFetch(`${base}/api/lineup/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'suggest' }) });
+  assert.equal((await set.json()).mode, 'suggest');
+  assert.ok(KV.get('auth:owner'), 'logins and refreshes save the owner for the nightly job');
+  KV.delete('auth:owner');
+  KV.delete('snap:lineup');
+  const noOwner = await (await realFetch(`${base}/api/cron/lineup`)).json();
+  assert.equal(noOwner.skipped, 'no owner');
+  const { seal: sealIt } = await import('../server/session.js');
+  const { clientTag: tag } = await import('../server/yahoo.js');
+  KV.set('auth:owner', { s: sealIt({ refresh_token: 'RT', guid: 'GUID1', client: tag(), scope: 'fspt-r' }) });
+  KV.delete('snap:lineup');
+  const run = await (await realFetch(`${base}/api/cron/lineup`)).json();
+  assert.equal(run.mode, 'suggest', JSON.stringify(run));
+  assert.ok(run.steps.includes('Start Bench Guy at Util'));
+  assert.equal(KV.get('snap:lineup').date, run.date);
+  assert.equal((await (await realFetch(`${base}/api/cron/lineup`)).json()).skipped, 'ran recently');
 });
 
 test('export: one league snapshot saved for Claude, sections fail independently', async () => {

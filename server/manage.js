@@ -3,6 +3,7 @@
 import { yget, merge, each, myContext } from './yahoo.js';
 import { gamesBetween, etDate, addDays, nbaTeam, normName } from './nba.js';
 import { roster } from './gamenight.js';
+import { bestLineup, describe } from './lineup.js';
 import { availability as durability } from '../src/draft/engine.js';
 import {
   IL_SLOTS, IL_ELIGIBLE, OUT, KEEP_RANK, espnRates, rosOf, ratesFor, availability, gameVar,
@@ -13,30 +14,7 @@ const IL_CAPACITY = 2;
 const ACTIVE = s => s && s !== 'BN' && !IL_SLOTS.has(s);
 const KEYS = ['fgm', 'fga', 'ftm', 'fta', 'tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'];
 
-// Can a player with these eligible positions fill this lineup slot?
-export function fitsSlot(slot, pos = []) {
-  if (slot === 'Util') return pos.some(p => ['PG', 'SG', 'SF', 'PF', 'C', 'G', 'F'].includes(p));
-  if (slot === 'G') return pos.includes('PG') || pos.includes('SG') || pos.includes('G');
-  if (slot === 'F') return pos.includes('SF') || pos.includes('PF') || pos.includes('F');
-  return pos.includes(slot);
-}
-
-// Swaps that put bench players who play into slots held by idle/out starters.
-// Each bench player and each slot is used once; best bench players first.
-export function lineupSwaps(players, plays) {
-  const idle = players.filter(p => ACTIVE(p.slot) && (!plays(p) || OUT.has(p.status)));
-  const bench = players.filter(p => p.slot === 'BN' && plays(p) && !OUT.has(p.status));
-  const swaps = [];
-  const usedSlots = new Set();
-  for (const b of bench) {
-    const target = idle.find(s => !usedSlots.has(s) && fitsSlot(s.slot, b.pos));
-    if (!target) continue;
-    usedSlots.add(target);
-    swaps.push({ start: b.name, startPos: b.displayPos, sit: target.name, slot: target.slot, reason: OUT.has(target.status) ? target.status : 'no game' });
-  }
-  const stuck = bench.filter(b => !swaps.some(s => s.start === b.name));
-  return { swaps, stuck: stuck.map(b => b.name) };
-}
+export { fitsSlot } from './lineup.js';
 
 // ── Alerts ──────────────────────────────────────────────────────────────────
 export async function alerts(req, res) {
@@ -54,14 +32,16 @@ export async function alerts(req, res) {
   const playsOn = d => p => !!by[nbaTeam(p.team)]?.has(d);
   const out = [];
 
-  // Tomorrow's lineup is the one you can still change
+  // Tomorrow's lineup is the one you can still change. Rearranges the whole
+  // lineup (a center can't take a guard's slot, but a guard can move over)
   const tm = rTomorrow || rToday;
-  const { swaps, stuck } = lineupSwaps(tm, playsOn(tomorrow));
-  for (const s of swaps) {
-    out.push({ kind: 'lineup', level: 'action', when: 'tomorrow', text: `Start ${s.start} (${s.startPos}) in ${s.slot} instead of ${s.sit} (${s.reason}).` });
+  const w = realWeight(ctx.currentWeek);
+  const plan = bestLineup(tm, { plays: playsOn(tomorrow), value: p => rosOf(p.name, espn, ratesFor(p, espn, w).rates).rosValue ?? -5 });
+  if (plan.moves.length) {
+    out.push({ kind: 'lineup', level: plan.idleStarters.length ? 'action' : 'info', when: 'tomorrow', text: `Tomorrow's lineup: ${describe(plan.moves).join('; ')}.` });
   }
-  if (stuck.length) {
-    out.push({ kind: 'lineup', level: 'info', when: 'tomorrow', text: `${stuck.join(', ')} play${stuck.length === 1 ? 's' : ''} tomorrow but no open slot fits their position.` });
+  if (plan.benchedPlaying.length) {
+    out.push({ kind: 'lineup', level: 'info', when: 'tomorrow', text: `${plan.benchedPlaying.join(', ')} play${plan.benchedPlaying.length === 1 ? 's' : ''} tomorrow but there's no open slot for ${plan.benchedPlaying.length === 1 ? 'him' : 'them'}.` });
   }
 
   // Injuries. O and INJ players can go on IL; others (e.g. suspended)

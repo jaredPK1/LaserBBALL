@@ -19,5 +19,11 @@
     "deploymentEnabled": {
       "claude/*": false
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/lineup",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }
