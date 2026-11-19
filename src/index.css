@@ -532,3 +532,7 @@ select.input-sm { width: auto; }
 .wc-label { fill: var(--text); font-size: 12px; font-weight: 600; }
 .wc-tip rect { fill: var(--surface); stroke: var(--border); }
 .wc-tip text { fill: var(--text); font-size: 11px; }
+.recap-preview { display: grid; gap: 8px; margin-top: 8px; }
+.recap-embed { border-left: 3px solid var(--blue); padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 4px; }
+.recap-embed p { margin: 4px 0; white-space: pre-line; font-size: 13px; }
+.recap-field { margin-top: 6px; }

@@ -171,3 +171,18 @@ export const sendTestNotification = () =>
 
 export const getWeekSeries = () =>
   apiCall(() => axios.get(`${BASE}/week/series`));
+
+export const saveLeagueWebhook = (leagueWebhook) =>
+  apiCall(() => axios.post(`${BASE}/notify/config`, { leagueWebhook }));
+
+export const getRecapConfig = () =>
+  apiCall(() => axios.get(`${BASE}/recap/config`));
+
+export const setRecapOn = (on) =>
+  apiCall(() => axios.post(`${BASE}/recap/config`, { on }));
+
+export const previewRecap = () =>
+  apiCall(() => axios.get(`${BASE}/recap/preview`, { timeout: 60000 }));
+
+export const sendRecapNow = () =>
+  apiCall(() => axios.post(`${BASE}/recap/send`, null, { timeout: 60000 }));

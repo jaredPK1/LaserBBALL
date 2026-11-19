@@ -13,7 +13,7 @@ import { storeConfigured, getJson, setJson } from './store.js';
 
 const NCATS = CATS.length;
 // Express's req.query is read-only; reuse page handlers with our own query
-const withQuery = (req, query) => Object.defineProperty(req, 'query', { value: query, writable: true, configurable: true });
+export const withQuery = (req, query) => Object.defineProperty(req, 'query', { value: query, writable: true, configurable: true });
 
 // Chance of winning more categories than you lose (≥5 of 9), from each
 // category's win chance; ties count as not won
@@ -27,7 +27,7 @@ export function weekWinProb(cats) {
   return dist.slice(Math.floor(NCATS / 2) + 1).reduce((a, b) => a + b, 0);
 }
 
-const leader = (cat, mine, opp) => {
+export const leader = (cat, mine, opp) => {
   if (mine == null || opp == null || Math.abs(mine - opp) < (cat.pct ? 0.0005 : 0.001)) return 'tie';
   return (cat.low ? mine < opp : mine > opp) ? 'me' : 'opp';
 };
@@ -50,7 +50,7 @@ export function changes(prev, now) {
 }
 
 // Last night's box lines for a team's players, starters only (bench stats don't count)
-async function nightLines(req, res, teamKey, date) {
+export async function nightLines(req, res, teamKey, date) {
   const data = await yget(req, res, `team/${teamKey}/roster;date=${date}/players/stats;type=date;date=${date}`);
   const r = merge(data.fantasy_content.team.slice(1)).roster;
   return each(r?.['0']?.players || r?.players, 'player').map(parsePlayer).map(p => {
@@ -58,8 +58,8 @@ async function nightLines(req, res, teamKey, date) {
     return { name: p.name, slot: p.slot, played: (l.fga || 0) + (l.fta || 0) + (l.pts || 0) + (l.reb || 0) + (l.ast || 0) > 0, l };
   }).filter(p => p.played);
 }
-const fmtLine = ({ name, l }) => `**${name}** ${Math.round(l.pts)} pts${l.tpm ? `, ${Math.round(l.tpm)} 3PM` : ''}${l.stl ? `, ${Math.round(l.stl)} STL` : ''}${l.blk ? `, ${Math.round(l.blk)} BLK` : ''}, ${Math.round(l.fgm)}/${Math.round(l.fga)} FG${l.to >= 4 ? `, ${Math.round(l.to)} TO` : ''}`;
-const score = l => l.pts + 1.5 * l.tpm + 3 * l.stl + 3 * l.blk - l.to;
+export const fmtLine = ({ name, l }) => `**${name}** ${Math.round(l.pts)} pts${l.tpm ? `, ${Math.round(l.tpm)} 3PM` : ''}${l.stl ? `, ${Math.round(l.stl)} STL` : ''}${l.blk ? `, ${Math.round(l.blk)} BLK` : ''}, ${Math.round(l.fgm)}/${Math.round(l.fga)} FG${l.to >= 4 ? `, ${Math.round(l.to)} TO` : ''}`;
+export const score = l => l.pts + 1.5 * l.tpm + 3 * l.stl + 3 * l.blk - l.to;
 const pct = p => `${Math.round(p * 100)}%`;
 const DAY = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
 

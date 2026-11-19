@@ -490,7 +490,7 @@ test('lineup setter: plan, apply needs write access, nightly modes', async () =>
   const post = body => realFetch(`${base}/api/notify/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   assert.equal((await post({ webhook: 'https://evil.example/hook' })).status, 400);
   const hook = 'https://discord.com/api/webhooks/123/abc-DEF_9';
-  assert.deepEqual(await (await post({ webhook: hook })).json(), { connected: true, fromEnv: false });
+  assert.deepEqual(await (await post({ webhook: hook })).json(), { connected: true, fromEnv: false, league: false, recapOn: true });
   assert.ok(!JSON.stringify(KV.get('cfg:notify')).includes('abc-DEF_9'), 'webhook stored encrypted');
   assert.equal((await (await realFetch(`${base}/api/notify/test`, { method: 'POST', headers: { cookie } })).json()).sent, true);
   // Next night's run posts the moves to your channel
@@ -525,4 +525,36 @@ test('export: one league snapshot saved for Claude, sections fail independently'
   assert.ok(doc.bestAdds.streamers.length >= 1 && doc.bestAdds.streamers[0].gamesLeft != null, JSON.stringify(doc.bestAdds));
   const f = await get('/api/export?download=1');
   assert.match(f.headers.get('content-disposition'), /attachment; filename="league-week-3.json"/);
+});
+
+test('league recap: neutral morning post to the league channel', async () => {
+  // Uses the week-3 scoreboard/standings fixtures from the league test
+  const post = body => realFetch(`${base}/api/notify/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const cfg = await (await post({ leagueWebhook: 'https://discord.com/api/webhooks/999/league-HOOK' })).json();
+  assert.equal(cfg.league, true);
+  assert.equal(cfg.connected, true, 'your private channel is left alone');
+  assert.equal((await get('/api/recap/config', false)).status, 401);
+
+  const prev = await (await get('/api/recap/preview')).json();
+  assert.match(prev.embeds[0].title, /^🏀 The Morning Whistle · /);
+  const mu = prev.embeds.find(e => e.title === 'Week 3 matchups');
+  assert.equal(mu.fields.length, 1);
+  assert.match(mu.fields[0].name, /^Me FC .*\d+-\d+.* Them/);
+  assert.match(mu.fields[0].value, /Odds to win the week: Me FC \*\*\d+%\*\*/);
+  const race = prev.embeds.find(e => e.title.startsWith('📈'));
+  assert.match(race.description, /^1\. /);
+  // Nothing from your private analysis leaks into the league post
+  const all = JSON.stringify(prev.embeds);
+  for (const word of ['lineup', 'Bench Guy at', 'adds', 'trade']) assert.ok(!all.toLowerCase().includes(word.toLowerCase()), word);
+
+  const n = DISCORD.length;
+  const sent = await (await realFetch(`${base}/api/recap/send`, { method: 'POST', headers: { cookie } })).json();
+  assert.equal(sent.sent, true);
+  assert.equal(DISCORD.length, n + 1);
+  assert.equal(DISCORD.at(-1).hook, 'https://discord.com/api/webhooks/999/league-HOOK');
+  assert.ok(KV.get('snap:recap:3').days.length >= 1);
+
+  // Off switch is respected by the cron
+  await realFetch(`${base}/api/recap/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ on: false }) });
+  assert.equal((await (await realFetch(`${base}/api/cron/league`)).json()).skipped, 'off');
 });

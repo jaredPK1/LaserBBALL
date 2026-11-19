@@ -9,23 +9,26 @@ import { storeConfigured, getJson, setJson } from './store.js';
 const CFG = 'cfg:notify';
 const WEBHOOK = /^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/;
 
-async function webhookUrl() {
-  if (process.env.DISCORD_WEBHOOK_URL) return process.env.DISCORD_WEBHOOK_URL.trim();
+// Two channels: 'me' (your private report) and 'league' (the league's channel)
+const FIELD = { me: 'discord', league: 'league' };
+async function webhookUrl(channel = 'me') {
+  if (channel === 'me' && process.env.DISCORD_WEBHOOK_URL) return process.env.DISCORD_WEBHOOK_URL.trim();
   if (!storeConfigured()) return null;
   const cfg = await getJson(CFG).catch(() => null);
-  return cfg?.discord ? unseal(cfg.discord)?.url || null : null;
+  const sealed = cfg?.[FIELD[channel]];
+  return sealed ? unseal(sealed)?.url || null : null;
 }
 
 // One message: a single embed ({title, message, click}) or up to 10 embeds
-export async function notify({ title, message, click, embeds }) {
-  const url = await webhookUrl();
+export async function notify({ title, message, click, embeds, channel = 'me' }) {
+  const url = await webhookUrl(channel);
   if (!url) return { sent: false, reason: 'Discord isn’t connected yet' };
   const list = (embeds || [{ title, description: message, ...(click ? { url: click } : {}) }])
     .map(e => ({ ...e, description: e.description ? String(e.description).slice(0, 4000) : undefined }));
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'LaserBBALL', embeds: list.slice(0, 10) }),
+    body: JSON.stringify({ username: channel === 'league' ? 'The Morning Whistle' : 'LaserBBALL', embeds: list.slice(0, 10) }),
   });
   return r.ok ? { sent: true } : { sent: false, reason: `Discord ${r.status}` };
 }
@@ -34,17 +37,23 @@ export const appUrl = req => (process.env.PUBLIC_URL || `https://${req.headers['
 
 const needAuth = req => { if (!isAuthed(req)) throw Object.assign(new Error('Not connected to Yahoo'), { status: 401 }); };
 
-// GET: whether Discord is connected. POST {webhook}: save it (or '' to remove).
+// GET: which channels are connected. POST {webhook} and/or {leagueWebhook}:
+// save one (or '' to remove it); the other is left alone.
 export async function notifyConfig(req) {
   needAuth(req);
   if (req.method === 'POST') {
     if (!storeConfigured()) throw Object.assign(new Error('Cloud storage is not set up'), { status: 503 });
-    const url = String(req.body?.webhook || '').trim();
-    if (url && !WEBHOOK.test(url)) throw Object.assign(new Error('That doesn’t look like a Discord webhook URL (https://discord.com/api/webhooks/…)'), { status: 400 });
-    await setJson(CFG, url ? { discord: seal({ url }), updatedAt: new Date().toISOString() } : {});
+    const cfg = { ...((await getJson(CFG).catch(() => null)) || {}) };
+    for (const [param, field] of [['webhook', 'discord'], ['leagueWebhook', 'league']]) {
+      if (req.body?.[param] === undefined) continue;
+      const url = String(req.body[param] || '').trim();
+      if (url && !WEBHOOK.test(url)) throw Object.assign(new Error('That doesn’t look like a Discord webhook URL (https://discord.com/api/webhooks/…)'), { status: 400 });
+      if (url) cfg[field] = seal({ url }); else delete cfg[field];
+    }
+    await setJson(CFG, { ...cfg, updatedAt: new Date().toISOString() });
   }
-  const url = await webhookUrl();
-  return { connected: !!url, fromEnv: !!process.env.DISCORD_WEBHOOK_URL };
+  const [me, league, recap] = await Promise.all([webhookUrl('me'), webhookUrl('league'), getJson('cfg:recap').catch(() => null)]);
+  return { connected: !!me, fromEnv: !!process.env.DISCORD_WEBHOOK_URL, league: !!league, recapOn: recap?.on !== false };
 }
 
 export async function notifyTest(req) {

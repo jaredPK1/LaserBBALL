@@ -78,7 +78,7 @@ export function freeAgentRipple(fas, matchups, rosters, gamesByTeam, dates, from
   }));
 }
 
-function parseScoreboard(data, withWinners = false) {
+export function parseScoreboard(data, withWinners = false) {
   const sb = merge(merge(data.fantasy_content.league).scoreboard);
   return each(sb['0']?.matchups || sb.matchups, 'matchup').map(m => {
     const nodes = each(merge(m['0'] || m).teams, 'team');

@@ -4,6 +4,7 @@ import { startAuth, clearTokens, getYahooCheck } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import SendToClaude from '../components/SendToClaude';
 import NightlyLineup from '../components/NightlyLineup';
+import LeagueRecap from '../components/LeagueRecap';
 
 // NBA seasons straddle two years; Yahoo labels them by the starting year
 const currentSeason = () => {
@@ -75,6 +76,7 @@ export default function Settings({ authed }) {
       </section>
 
       <NightlyLineup />
+      <LeagueRecap />
       <SendToClaude />
 
       <section className="card">
