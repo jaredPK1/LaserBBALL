@@ -7,7 +7,6 @@ import { gamesBetween, etDate, addDays, nbaTeam } from './nba.js';
 import { roster } from './gamenight.js';
 import { IL_SLOTS, OUT, espnRates, rosOf, ratesFor, realWeight, teamGames } from './weekly.js';
 import { storeConfigured, getJson, setJson } from './store.js';
-import { notify, appUrl } from './notify.js';
 
 // Can a player with these eligible positions fill this lineup slot?
 export function fitsSlot(slot, pos = []) {
@@ -141,38 +140,15 @@ export async function lineupConfig(req) {
 
 const saveRun = doc => (storeConfigured() ? setJson(RUN, { ranAt: new Date().toISOString(), ...doc }).catch(() => {}) : null);
 
-// Called by Vercel Cron once an evening. Uses the stored owner login, since
-// there's no browser session. Protected by CRON_SECRET when it's set.
-export async function lineupCron(req, res) {
-  const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.authorization !== `Bearer ${secret}`) throw Object.assign(new Error('Forbidden'), { status: 403 });
-  const cfg = await getJson(CFG).catch(() => null);
-  const mode = cfg?.mode || 'suggest';
-  if (mode === 'off') return { skipped: 'off' };
-  // Without a secret anyone could hit this URL: at most one run per 30 minutes
-  const last = await getJson(RUN).catch(() => null);
-  if (!secret && last?.ranAt && Date.now() - Date.parse(last.ranAt) < 30 * 60_000) return { skipped: 'ran recently' };
-  const owner = await ownerSession();
-  if (!owner) { await saveRun({ mode, error: 'No saved Yahoo login yet: open the app once to connect.' }); return { skipped: 'no owner' }; }
-  req._session = owner;
-  try {
-    const p = await planFor(req, res, addDays(etDate(), 1));
-    const r = mode === 'auto' ? await apply(req, res, p) : { applied: false, reason: 'Suggest mode' };
-    const doc = { date: p.date, mode, steps: describe(p.moves), idleStarters: p.idleStarters, ...r };
-    // Ping your phone only when there's something to do (or that was done)
-    if (doc.steps.length) {
-      const day = new Date(`${p.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
-      doc.notified = (await notify({
-        title: r.applied ? `Lineup set for ${day}` : `${doc.steps.length} lineup change${doc.steps.length === 1 ? '' : 's'} for ${day}`,
-        message: doc.steps.join('\n'),
-        click: `${appUrl(req)}/week`,
-      }).catch(e => ({ sent: false, reason: e.message }))).sent;
-    }
-    await saveRun(doc);
-    return doc;
-  } catch (e) {
-    await saveRun({ mode, error: e.message });
-    throw e;
-  }
+// Tomorrow's lineup for the morning job: plan, apply in auto mode
+export async function lineupRun(req, res, mode) {
+  const p = await planFor(req, res, addDays(etDate(), 1));
+  const r = mode === 'auto' ? await apply(req, res, p) : { applied: false, reason: 'Suggest mode' };
+  const doc = { date: p.date, mode, steps: describe(p.moves), idleStarters: p.idleStarters, lineup: p.lineup, ...r };
+  await saveRun({ ...doc, lineup: undefined });
+  return doc;
 }
 
+export const lineupMode = async () => (await getJson(CFG).catch(() => null))?.mode || 'suggest';
+export const lastRun = () => getJson(RUN).catch(() => null);
+export { saveRun };

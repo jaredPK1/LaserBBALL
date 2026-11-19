@@ -168,3 +168,6 @@ export const saveDiscordWebhook = (webhook) =>
 
 export const sendTestNotification = () =>
   apiCall(() => axios.post(`${BASE}/notify/test`));
+
+export const getWeekSeries = () =>
+  apiCall(() => axios.get(`${BASE}/week/series`));

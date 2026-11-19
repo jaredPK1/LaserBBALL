@@ -22,8 +22,8 @@
   },
   "crons": [
     {
-      "path": "/api/cron/lineup",
-      "schedule": "0 2 * * *"
+      "path": "/api/cron/daily",
+      "schedule": "0 13 * * *"
     }
   ]
 }

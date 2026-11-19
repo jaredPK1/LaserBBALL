@@ -3,6 +3,7 @@ import { getWeek, getStreamers } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import AlertsCard from '../components/AlertsCard';
 import ReviewCard from '../components/ReviewCard';
+import WinChart from '../components/WinChart';
 
 const VERDICT = {
   locked: ['Locked', 'tag-green'],
@@ -81,6 +82,8 @@ export default function ThisWeek() {
           </div>
         )}
       </div>
+
+      <WinChart categories={cats} />
 
       <div className="table-wrap">
         <table className="gn-cats tw-cats">

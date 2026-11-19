@@ -16,13 +16,16 @@ async function webhookUrl() {
   return cfg?.discord ? unseal(cfg.discord)?.url || null : null;
 }
 
-export async function notify({ title, message, click }) {
+// One message: a single embed ({title, message, click}) or up to 10 embeds
+export async function notify({ title, message, click, embeds }) {
   const url = await webhookUrl();
   if (!url) return { sent: false, reason: 'Discord isn’t connected yet' };
+  const list = (embeds || [{ title, description: message, ...(click ? { url: click } : {}) }])
+    .map(e => ({ ...e, description: e.description ? String(e.description).slice(0, 4000) : undefined }));
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'LaserBBALL', embeds: [{ title, description: message.slice(0, 4000), ...(click ? { url: click } : {}) }] }),
+    body: JSON.stringify({ username: 'LaserBBALL', embeds: list.slice(0, 10) }),
   });
   return r.ok ? { sent: true } : { sent: false, reason: `Discord ${r.status}` };
 }

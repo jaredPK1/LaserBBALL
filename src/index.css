@@ -520,3 +520,15 @@ select.input-sm { width: auto; }
 .notify-input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border, rgba(255,255,255,0.15)); background: transparent; color: inherit; }
 .settings-steps { margin: 4px 0 8px; padding-left: 20px; }
 .settings-steps li { margin: 4px 0; }
+
+/* Win-probability chart */
+.winchart svg { width: 100%; height: auto; display: block; }
+.wc-grid { stroke: var(--border); stroke-width: 1; }
+.wc-mid { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+.wc-axis { fill: var(--muted); font-size: 11px; }
+.wc-line { fill: none; stroke: var(--blue); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.wc-dot { fill: var(--blue); stroke: var(--surface); stroke-width: 2; pointer-events: none; }
+.wc-hit { fill: transparent; cursor: pointer; }
+.wc-label { fill: var(--text); font-size: 12px; font-weight: 600; }
+.wc-tip rect { fill: var(--surface); stroke: var(--border); }
+.wc-tip text { fill: var(--text); font-size: 11px; }

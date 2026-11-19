@@ -94,3 +94,20 @@ test('league ripple: standings projection, rooting interest, free-agent value pe
   assert.equal(root['b|c'].against, 'c');   // c is near you; b is far behind
   assert.equal(root['me|a'], undefined);
 });
+
+test('morning report math: chance to win the week, categories changing hands', async () => {
+  const { weekWinProb, changes, chartUrl } = await import('../server/report.js');
+  const even = Array.from({ length: 9 }, () => ({ winProb: 0.5 }));
+  assert.ok(Math.abs(weekWinProb(even) - 0.5) < 1e-9);
+  assert.ok(weekWinProb(even.map((c, i) => ({ winProb: i < 5 ? 1 : 0 }))) > 0.999);
+  assert.ok(weekWinProb(even.map((c, i) => ({ winProb: i < 4 ? 1 : 0 }))) < 1e-9);
+  const prev = { expected: 4, cats: [{ name: 'STL', mine: 10, opp: 8, p: 0.6 }, { name: 'TO', mine: 20, opp: 25, p: 0.8 }, { name: 'BLK', mine: 5, opp: 5, p: 0.5 }] };
+  const now = { expected: 4, cats: [{ name: 'STL', mine: 12, opp: 14, p: 0.4 }, { name: 'TO', mine: 30, opp: 26, p: 0.4 }, { name: 'BLK', mine: 7, opp: 5, p: 0.55 }] };
+  const { flips, moves } = changes(prev, now);
+  assert.deepEqual(flips.map(f => `${f.name}:${f.from}>${f.to}`), ['STL:me>opp', 'TO:me>opp', 'BLK:tie>me']); // fewer TO wins
+  assert.deepEqual(moves.map(m => m.name), ['STL', 'TO']);
+  assert.deepEqual(changes(null, now), { flips: [], moves: [] });
+  const url = decodeURIComponent(chartUrl([{ date: '2026-11-16', winWeek: 0.3 }, { date: '2026-11-18', winWeek: 0.62 }], '2026-11-16'));
+  assert.match(url, /"data":\[30,null,62,null,null,null,null\]/);
+  assert.match(url, /\(v\) => v \+ "%"/);
+});

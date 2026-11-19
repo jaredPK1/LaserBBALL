@@ -140,7 +140,7 @@ before(async () => {
       KV.set(row.key, row.doc);
       return new Response(null, { status: 201 });
     }
-    if (url.startsWith('https://discord.com/api/webhooks/')) { const b = JSON.parse(opts.body); DISCORD.push({ ...b.embeds[0], hook: url }); return new Response(null, { status: 204 }); }
+    if (url.startsWith('https://discord.com/api/webhooks/')) { const b = JSON.parse(opts.body); DISCORD.push({ ...b.embeds[0], embeds: b.embeds, hook: url }); return new Response(null, { status: 204 }); }
     if (url.includes('fantasysports.yahooapis.com')) {
       const path = decodeURIComponent(url.split('/fantasy/v2/')[1].split('?')[0]);
       if (opts?.method === 'PUT') return new Response('Please provide valid credentials', { status: 401 }); // read-only token
@@ -478,6 +478,8 @@ test('lineup setter: plan, apply needs write access, nightly modes', async () =>
   const run = await (await realFetch(`${base}/api/cron/lineup`)).json();
   assert.equal(run.mode, 'suggest', JSON.stringify(run));
   assert.ok(run.steps.includes('Start Bench Guy at Util'));
+  assert.ok(run.winWeek > 0 && run.winWeek < 1);
+  assert.equal(KV.get('snap:daily:3').days.length, 1);
   assert.equal(KV.get('snap:lineup').date, run.date);
   // Discord isn't connected yet: the run still works, nothing is sent
   assert.equal(run.notified, false);
@@ -495,8 +497,12 @@ test('lineup setter: plan, apply needs write access, nightly modes', async () =>
   const ping = DISCORD.at(-1);
   assert.equal(ping.hook, hook);
   assert.match(ping.url, /\/week$/);
-  assert.match(ping.title, /lineup change/);
-  assert.match(ping.description, /Start Bench Guy at Util/);
+  assert.match(ping.title, /^Week 3 vs .+: \d+% to win$/);
+  assert.match(ping.image.url, /^https:\/\/quickchart\.io\/chart\?/);
+  const byTitle = t => ping.embeds.find(e => e.title.startsWith(t));
+  assert.match(byTitle('Tomorrow’s lineup').description, /Start Bench Guy at Util/);
+  assert.match(byTitle('Watch').description, /Games left/);
+  assert.equal(KV.get('snap:daily:3').days.length, 1, 'a rerun the same morning replaces that day');
   assert.equal((await (await realFetch(`${base}/api/cron/lineup`)).json()).skipped, 'ran recently');
   assert.ok(run2.steps.length);
 });

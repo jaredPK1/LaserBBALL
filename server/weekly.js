@@ -267,7 +267,7 @@ export async function weekProjection(req, res) {
   }));
   return {
     week: st.week, start: st.bounds.start, end: st.bounds.end, projectingFrom: st.startDay, actualWeight: st.w,
-    me: { name: st.me?.name }, opp: st.opp ? { name: st.opp.name, manager: st.oppNick } : null,
+    me: { name: st.me?.name, key: st.me?.key }, opp: st.opp ? { name: st.opp.name, manager: st.oppNick, key: st.opp.key } : null,
     categories: odds,
     expectedWins: expectedWins(odds),
     scouting: scout,
@@ -277,7 +277,7 @@ export async function weekProjection(req, res) {
 }
 
 // Adds made this week, from Yahoo's team metadata (null if Yahoo doesn't say)
-async function addsUsed(req, res, teamKey) {
+export async function addsUsed(req, res, teamKey) {
   try {
     const data = await yget(req, res, `team/${teamKey}`);
     const ra = merge(data.fantasy_content.team[0] || data.fantasy_content.team).roster_adds;
