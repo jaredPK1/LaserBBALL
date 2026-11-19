@@ -201,3 +201,15 @@ export const intelAdminAction = (body) =>
 
 export const postIntelInstructions = () =>
   apiCall(() => axios.post(`${BASE}/intel/instructions`));
+
+export const getBotStatus = () =>
+  apiCall(() => axios.get(`${BASE}/discord/status`));
+
+export const registerBotCommands = () =>
+  apiCall(() => axios.post(`${BASE}/discord/register`, null, { timeout: 30000 }));
+
+export const previewMonday = () =>
+  apiCall(() => axios.get(`${BASE}/monday/preview`, { timeout: 60000 }));
+
+export const getOdds = () =>
+  apiCall(() => axios.get(`${BASE}/odds`));

@@ -28,6 +28,10 @@
     {
       "path": "/api/cron/league",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/monday",
+      "schedule": "0 15 * * 1"
     }
   ]
 }

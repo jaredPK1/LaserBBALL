@@ -13,6 +13,9 @@ import { lineupPlan, lineupApply, lineupConfig } from './lineup.js';
 import { dailyCron, weekSeriesRoute } from './report.js';
 import { recapCron, recapConfig, recapPreview, recapSendNow } from './recap.js';
 import { joinTeams, joinSignup, intelAdmin, intelInstructions } from './intel.js';
+import { mondayCron, mondayPreview } from './monday.js';
+import { interactions, registerCommands, botStatus } from './discord.js';
+import { cachedOdds } from './odds.js';
 import { notifyConfig, notifyTest } from './notify.js';
 import { draftPool } from './draft.js';
 import { espnDraftPool, loadPool } from './espn.js';
@@ -23,7 +26,8 @@ import { historySeasons, historySeason } from './history.js';
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json());
+// Keep the raw body: Discord interactions are verified against the exact bytes
+app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
 const wrap = fn => async (req, res) => {
   try {
@@ -226,6 +230,12 @@ app.post('/api/join', wrap(joinSignup));
 app.get('/api/intel/admin', wrap(intelAdmin));
 app.post('/api/intel/admin', wrap(intelAdmin));
 app.post('/api/intel/instructions', wrap(intelInstructions));
+app.get('/api/cron/monday', wrap(mondayCron));
+app.get('/api/monday/preview', wrap(mondayPreview));
+app.post('/api/discord/interactions', wrap(interactions));
+app.post('/api/discord/register', wrap(registerCommands));
+app.get('/api/discord/status', wrap(botStatus));
+app.get('/api/odds', wrap(() => cachedOdds()));
 app.get('/api/notify/config', wrap(notifyConfig));
 app.post('/api/notify/config', wrap(notifyConfig));
 app.post('/api/notify/test', wrap(notifyTest));

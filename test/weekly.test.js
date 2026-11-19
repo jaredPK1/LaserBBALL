@@ -111,3 +111,56 @@ test('morning report math: chance to win the week, categories changing hands', a
   assert.match(url, /"data":\[30,null,62,null,null,null,null\]/);
   assert.match(url, /\(v\) => v \+ "%"/);
 });
+
+test('playoff odds simulation: locked-in teams, coin flips, and the cut line', async () => {
+  const { simulate } = await import('../server/odds.js');
+  const st = ['a', 'b', 'c', 'd'].map((key, i) => ({ key, wins: [30, 20, 20, 0][i], losses: 0, ties: 0 }));
+  const even = Array(9).fill(0.5);
+  // b and c play twice, a far ahead, d far behind; 2 spots
+  const games = [{ a: 'b', b: 'c', p: even }, { a: 'b', b: 'c', p: even }, { a: 'a', b: 'd', p: even }];
+  const r = Object.fromEntries(simulate(st, games, { sims: 3000, spots: 2 }).map(x => [x.key, x]));
+  assert.equal(r.a.playoffs, 1);
+  assert.equal(r.d.playoffs, 0);
+  assert.ok(Math.abs(r.b.playoffs - 0.5) < 0.06, String(r.b.playoffs));
+  assert.ok(Math.abs(r.b.playoffs + r.c.playoffs - 1) < 1e-9);
+  // A heavy favorite in every category wins out
+  const fav = simulate(st, [{ a: 'b', b: 'c', p: Array(9).fill(0.95) }], { sims: 2000, spots: 2 });
+  assert.ok(fav.find(x => x.key === 'b').playoffs > 0.95);
+  // Same inputs, same answer
+  assert.deepEqual(simulate(st, games, { sims: 500, spots: 2, seed: 3 }), simulate(st, games, { sims: 500, spots: 2, seed: 3 }));
+});
+
+test('rivalry history across seasons, matched by manager', async () => {
+  const { rivalry, rivalryLine } = await import('../server/rivalry.js');
+  const season = (year, a, b, weeks) => ({ season: year, teams: [{ teamKey: a, managerId: 'G1' }, { teamKey: b, managerId: 'G2' }, { teamKey: `${year}x`, managerId: 'G3' }], weeks });
+  const m = (k1, k2, winners, extra = {}) => ({ teams: [k1, k2], winners, ...extra });
+  const W = (a, b, t = 0) => ({ ...Object.fromEntries(Array.from({ length: a }, (_, i) => [`s${i}`, 'A'])), ...Object.fromEntries(Array.from({ length: b }, (_, i) => [`t${i}`, 'B'])), ...Object.fromEntries(Array.from({ length: t }, (_, i) => [`u${i}`, 'tie'])) });
+  const fix = (w, a, b) => Object.fromEntries(Object.entries(w).map(([k, v]) => [k, v === 'A' ? a : v === 'B' ? b : v]));
+  const seasons = [
+    season(2023, 'a1', 'b1', [{ week: 3, matchups: [m('a1', 'b1', fix(W(6, 3), 'a1', 'b1')), m('a1', '2023x', {})] }]),
+    // Team keys change every season; managers don't. Listed in either order.
+    season(2024, 'a2', 'b2', [{ week: 9, matchups: [m('b2', 'a2', fix(W(5, 3, 1), 'b2', 'a2'))] }, { week: 20, matchups: [m('a2', 'b2', fix(W(5, 4), 'a2', 'b2'), { isPlayoffs: true })] }, { week: 21, matchups: [m('a2', 'b2', fix(W(9, 0), 'a2', 'b2'), { isConsolation: true })] }]),
+  ];
+  const r = rivalry(seasons, 'G1', 'G2');
+  assert.deepEqual([r.catsA, r.catsB, r.catTies, r.winsA, r.winsB, r.meetings], [6 + 3 + 5, 3 + 5 + 4, 1, 2, 1, 3]);
+  assert.equal(r.playoffs.length, 1);
+  assert.match(rivalryLine(r, 'Shawn', 'JMAZ'), /^All-time: Shawn leads JMAZ 14-12 in categories \(2-1 in matchups, 1 playoff meeting\)\. Last time \(2024–25 wk 20\): Shawn 5-4\.$/);
+  assert.match(rivalryLine(rivalry(seasons, 'G1', 'nobody'), 'A', 'B'), /First-ever meeting/);
+});
+
+test('trade desk keeps only win-wins, once per deal', async () => {
+  const { tradeDesk } = await import('../server/monday.js');
+  const r = (o) => ({ fgm: 6, fga: 13, ftm: 2, fta: 2.6, tpm: 1.5, pts: 15, reb: 5, ast: 3, stl: 1, blk: 0.6, to: 1.5, ...o });
+  const pl = (name, o) => ({ key: name, name, rates: r(o), avail: 1, durability: 1, rosValue: 1 });
+  const team = (k, special) => ({ key: k, name: k, manager: k, players: [...Array.from({ length: 7 }, (_, i) => pl(`${k}${i}`, {})), ...special] });
+  const rosters = [
+    team('bigs', ['A', 'B', 'C'].map(x => pl(`Big ${x}`, { reb: 12, blk: 2, tpm: 0 }))),
+    team('shooters', ['A', 'B', 'C'].map(x => pl(`Shooter ${x}`, { tpm: 4, reb: 3, blk: 0.2 }))),
+    team('x', []), team('y', []),
+  ];
+  const deals = tradeDesk(rosters, 10);
+  assert.ok(deals.length > 0);
+  for (const d of deals) assert.ok(d.winWin && d.myGain > 0 && d.theirGain > 0.02, JSON.stringify(d));
+  const ids = deals.map(d => [d.from.key, d.partner.key].sort().join('|') + [...d.give, d.get].sort().join('|'));
+  assert.equal(new Set(ids).size, ids.length);
+});

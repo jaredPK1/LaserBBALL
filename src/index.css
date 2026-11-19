@@ -539,3 +539,4 @@ select.input-sm { width: auto; }
 .join-page { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
 .join-field { display: grid; gap: 4px; margin: 10px 0; }
 .join-field select { padding: 6px 8px; border-radius: 6px; background: transparent; color: inherit; border: 1px solid var(--border); }
+.odds-cut td { border-bottom: 2px dashed var(--muted); }

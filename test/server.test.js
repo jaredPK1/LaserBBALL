@@ -30,6 +30,7 @@ const roster = (players) => ({ fantasy_content: { team: [[{ team_key: 'x' }], { 
 const teamNode = (key, name, mine, st) => ({ team: [[{ team_key: key }, { name }, ...(mine ? [{ is_owned_by_current_login: 1 }] : [])], { team_stats: stats(st) }] });
 
 const DISCORD = [];
+const BOT = [];
 const FIX = {
   'users;use_login=1/games;game_keys=nba/leagues/teams': { fantasy_content: { users: { '0': { user: [{ guid: 'g' }, { games: { '0': { game: [{ game_key: '466' }, { leagues: { '0': { league: [
     { league_key: '466.l.33458', league_id: '33458', name: 'Where Friendship Happens', current_week: 3, draft_status: 'predraft' },
@@ -140,6 +141,11 @@ before(async () => {
       const row = JSON.parse(opts.body);
       KV.set(row.key, row.doc);
       return new Response(null, { status: 201 });
+    }
+    if (url.startsWith('https://discord.com/api/v10/')) {
+      BOT.push({ url, method: opts?.method || 'GET', body: opts?.body ? JSON.parse(opts.body) : null });
+      if (url.endsWith('/commands')) return json(JSON.parse(opts.body).map((c, i) => ({ ...c, id: String(i) })));
+      return json({ id: 'm1' });
     }
     if (url.startsWith('https://discord.com/api/webhooks/404/')) return new Response('{"message":"Unknown Webhook"}', { status: 404 });
     if (url.startsWith('https://discord.com/api/webhooks/')) { const b = JSON.parse(opts.body); DISCORD.push({ ...b.embeds[0], embeds: b.embeds, hook: url }); return new Response(null, { status: 204 }); }
@@ -615,4 +621,69 @@ test('private intel: league-mates sign up with the join code and get their own m
   const how = await (await realFetch(`${base}/api/intel/instructions`, { method: 'POST', headers: { cookie } })).json();
   assert.equal(how.sent, true);
   assert.match(DISCORD.at(-1).description, new RegExp(`/join\\?code=${admin.code}`));
+});
+
+test('discord bot: signed interactions, commands, pick’em, and the Monday special', async () => {
+  const crypto = await import('node:crypto');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  Object.assign(process.env, { DISCORD_APP_ID: 'app1', DISCORD_BOT_TOKEN: 'bt', DISCORD_PUBLIC_KEY: publicKey.export({ format: 'der', type: 'spki' }).subarray(12).toString('hex') });
+  const send = (body, { sign = true } = {}) => {
+    const raw = JSON.stringify(body), ts = String(Math.floor(Date.now() / 1000));
+    const sig = crypto.sign(null, Buffer.from(ts + raw), privateKey).toString('hex');
+    return realFetch(`${base}/api/discord/interactions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature-timestamp': ts, 'x-signature-ed25519': sign ? sig : '00'.repeat(64) }, body: raw });
+  };
+  const user = { member: { user: { id: 'u1', username: 'mike' } }, guild_id: 'g1', channel_id: 'c1', token: 'tok1' };
+  const cmd = (name, options = []) => send({ type: 2, ...user, data: { name, options } });
+
+  assert.equal((await send({ type: 1 }, { sign: false })).status, 401);
+  assert.deepEqual(await (await send({ type: 1 })).json(), { type: 1 });
+
+  // Register: commands carry this league's teams as choices
+  const reg = await (await realFetch(`${base}/api/discord/register`, { method: 'POST', headers: { cookie } })).json();
+  assert.ok(reg.registered.includes('trades') && reg.registered.includes('pickem'), JSON.stringify(reg));
+  const iamDef = BOT.find(b => b.url.endsWith('/applications/app1/commands')).body.find(c => c.name === 'iam');
+  assert.deepEqual(iamDef.options[0].choices.map(c => c.value), ['466.l.33458.t.1', '466.l.33458.t.2']);
+
+  const iam = await (await cmd('iam', [{ name: 'team', value: '466.l.33458.t.1' }])).json();
+  assert.equal(iam.data.flags, 64);
+  assert.equal(KV.get('discord:link:u1').teamKey, '466.l.33458.t.1');
+  const mu = await (await cmd('matchup')).json();
+  assert.match(mu.data.embeds[0].title, /^Me FC vs Them: \d+% to win$/, JSON.stringify(mu));
+  assert.match((await (await cmd('odds')).json()).data.content, /haven’t been calculated/);
+  await cmd('setup');
+  assert.equal(KV.get('cfg:bot').channelId, 'c1');
+
+  // Slow command: "thinking…" now, the answer follows privately
+  const tr = await (await cmd('trades')).json();
+  assert.deepEqual(tr, { type: 5, data: { flags: 64 } });
+  for (let i = 0; i < 50 && !BOT.some(b => b.method === 'PATCH'); i++) await new Promise(r => setTimeout(r, 50));
+  const fu = BOT.find(b => b.method === 'PATCH');
+  assert.match(fu.url, /\/webhooks\/app1\/tok1\/messages\/@original$/);
+  assert.ok(fu.body.embeds?.[0]?.title?.startsWith('💼 Trade ideas for Me FC') || /No trade/.test(fu.body.content), JSON.stringify(fu.body));
+
+  // Monday special: league post + pick'em with buttons in the /setup channel
+  await realFetch(`${base}/api/recap/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ on: true }) });
+  const pv = await (await get('/api/monday/preview')).json();
+  assert.match(pv.embeds[0].title, /^📊 Playoff odds · 6 make it/, JSON.stringify(pv));
+  const n = DISCORD.length;
+  const mon = await (await realFetch(`${base}/api/cron/monday`)).json();
+  assert.equal(mon.sent, true, JSON.stringify(mon));
+  assert.equal(mon.pickem.posted, true, JSON.stringify(mon.pickem));
+  assert.equal(DISCORD.at(-1).hook, 'https://discord.com/api/webhooks/999/league-HOOK');
+  assert.ok(DISCORD.length > n);
+  const post = BOT.find(b => b.url.endsWith('/channels/c1/messages'));
+  assert.equal(post.body.components[0].components.length, 2);
+  assert.match((await (await cmd('odds')).json()).data.embeds[0].title, /Playoff odds/);
+
+  // A pick, scoring, the leaderboard
+  KV.set('pick:3', { ...KV.get('pick:3'), lockAt: new Date(Date.now() + 3600e3).toISOString() });
+  const pk = await (await send({ type: 3, ...user, data: { custom_id: post.body.components[0].components[0].custom_id } })).json();
+  assert.match(pk.data.content, /^Locked in \*\*Me FC\*\*/);
+  const { scorePickem } = await import('../server/discord.js');
+  const sc = await scorePickem(3, [{ winnerKey: '466.l.33458.t.1' }]);
+  assert.deepEqual(sc.best, { name: 'mike', correct: 1, total: 1 });
+  assert.equal(await scorePickem(3, []), null, 'scored once');
+  assert.match((await (await cmd('pickem')).json()).data.embeds[0].description, /mike: 1\/1/);
+  KV.set('pick:3', { ...KV.get('pick:3'), lockAt: new Date(Date.now() - 1000).toISOString() });
+  assert.match((await (await send({ type: 3, ...user, data: { custom_id: post.body.components[0].components[1].custom_id } })).json()).data.content, /locked/);
 });

@@ -83,7 +83,7 @@ export async function alerts(req, res) {
 }
 
 // ── Playoff planner ─────────────────────────────────────────────────────────
-async function playoffWeeks(req, res, lk) {
+export async function playoffWeeks(req, res, lk) {
   let start = 19, count = 3;
   try {
     const s = merge(merge((await yget(req, res, `league/${lk}/settings`)).fantasy_content.league.slice(1)).settings);
@@ -136,6 +136,11 @@ function weeklyLine(players) {
 }
 
 const ZERO = Object.fromEntries(KEYS.map(k => [k, 0]));
+// Per-category win chances for a typical week between two rosters
+export function matchupOdds(a, b) {
+  return categoryOdds({ me: ZERO, opp: ZERO }, weeklyLine(a), weeklyLine(b));
+}
+
 // Average weekly category win chances against every other team
 export function seasonStrength(team, others) {
   const me = weeklyLine(team);

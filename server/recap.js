@@ -68,7 +68,7 @@ function catScore(cats) {
   return { a, b, t };
 }
 
-const recapKey = week => `snap:recap:${week}`;
+export const recapKey = week => `snap:recap:${week}`;
 
 export async function buildRecap(req, res) {
   const today = etDate();
@@ -92,7 +92,11 @@ export async function buildRecap(req, res) {
   }));
   const hist = storeConfigured() ? (await getJson(recapKey(lw.week)).catch(() => null))?.days || [] : [];
   const prevDay = hist.filter(d => d.date !== today).at(-1);
-  if (storeConfigured()) await setJson(recapKey(lw.week), { week: lw.week, days: [...hist.filter(d => d.date !== today), { date: today, matchups: now }] });
+  // Points scored on each team's bench last night (for the weekly Sleepwalker award)
+  const benchBy = Object.fromEntries(keys.map(k => [k, Math.round((nights.get(k) || []).filter(p => p.slot === 'BN').reduce((a, p) => a + p.l.pts, 0))]));
+  const teamInfo = Object.fromEntries(keys.map(k => [k, { name: teams.get(k).name, manager: teams.get(k).manager }]));
+  if (storeConfigured()) await setJson('snap:recap:latest', { week: lw.week, date: today });
+  if (storeConfigured()) await setJson(recapKey(lw.week), { week: lw.week, start: lw.start, teams: teamInfo, days: [...hist.filter(d => d.date !== today), { date: today, night: yesterday, matchups: now, bench: benchBy }] });
   const prevOf = m => prevDay?.matchups.find(p => p.a === m.a && p.b === m.b) || null;
 
   // Everyone's starters who played last night
@@ -189,7 +193,7 @@ export async function buildRecap(req, res) {
 }
 
 // Final category results for each of last week's matchups
-async function lastWeekResults(req, res, week) {
+export async function lastWeekResults(req, res, week) {
   const ctx = await myContext(req, res);
   const data = await yget(req, res, `league/${ctx.leagueKey}/scoreboard;week=${week}`);
   return parseScoreboard(data, true).map(pair => {
@@ -200,7 +204,7 @@ async function lastWeekResults(req, res, week) {
       if (w === 'tie') t++; else if (w === A.key) a++; else if (w === B.key) b++;
     }
     const [win, lose, w, l] = a >= b ? [A, B, a, b] : [B, A, b, a];
-    return { winner: label(win), loser: label(lose), w, l, t };
+    return { winner: label(win), loser: label(lose), winnerKey: a === b ? null : win.key, loserKey: a === b ? null : lose.key, w, l, t };
   });
 }
 

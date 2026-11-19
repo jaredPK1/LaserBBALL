@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getNotifyConfig, saveLeagueWebhook, getRecapConfig, setRecapOn, previewRecap, sendRecapNow } from '../api/yahoo';
+import { getNotifyConfig, saveLeagueWebhook, getRecapConfig, setRecapOn, previewRecap, sendRecapNow, previewMonday } from '../api/yahoo';
 
 const errOf = e => e.response?.data?.error || e.message;
 // Discord markdown → plain text for the in-app preview
@@ -28,7 +28,7 @@ export default function LeagueRecap() {
   return (
     <section className="card">
       <h3>League recap · The Morning Whistle</h3>
-      <p className="settings-note">Every morning (about 9am ET) a fun recap goes to your league’s Discord channel: every matchup’s score and odds, categories that changed hands overnight, stars of the night, a stat corner, and the projected standings. Mondays add last week’s results and power-ranking movers. It treats every team the same and never includes your private advice.</p>
+      <p className="settings-note">Every morning (about 9am ET) a fun recap goes to your league’s Discord channel: every matchup’s score and odds, categories that changed hands overnight, stars of the night, a stat corner, and the projected standings. Mondays add last week’s results and power rankings, plus a Monday special at 10am ET: playoff odds, awards, rivalry history, the Trade Desk and pick’em results. It treats every team the same and never includes your private advice.</p>
       {notify && (
         <>
           <p className="settings-note"><b>League channel</b> {notify.league ? <span className="tag tag-green">Connected</span> : <span className="tag">Not connected</span>}</p>
@@ -42,6 +42,7 @@ export default function LeagueRecap() {
       <div className="lineup-modes">
         {cfg && <button className={`btn btn-sm ${cfg.on ? 'btn-primary' : 'btn-ghost'}`} onClick={toggle}>{cfg.on ? 'Daily recap: on' : 'Daily recap: off'}</button>}
         <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(previewRecap, r => setPreview(r.data.embeds))}>{busy ? 'Working…' : 'Preview'}</button>
+        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(previewMonday, r => setPreview(r.data.embeds))}>Preview Monday special</button>
         {notify?.league && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(sendRecapNow, r => setMsg(r.data.sent ? 'Posted to the league channel.' : r.data.reason))}>Send now</button>}
       </div>
       {msg && <p className="meta">{msg}</p>}

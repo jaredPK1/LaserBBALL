@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getLeagueWeek, getPower } from '../api/yahoo';
+import { getLeagueWeek, getPower, getOdds } from '../api/yahoo';
 import PageHeader from '../components/PageHeader';
 import SendToClaude from '../components/SendToClaude';
 
@@ -13,23 +13,50 @@ export default function League() {
   const [power, setPower] = useState(null);
   const [error, setError] = useState(null);
   const [powerError, setPowerError] = useState(null);
+  const [odds, setOdds] = useState(null);
 
   useEffect(() => {
     let live = true;
     getLeagueWeek().then(r => live && setWeek(r.data)).catch(e => live && setError(e.response?.data?.error || e.message));
     getPower().then(r => live && setPower(r.data)).catch(e => live && setPowerError(e.response?.data?.error || e.message));
+    getOdds().then(r => live && setOdds(r.data)).catch(() => {});
     return () => { live = false; };
   }, []);
 
   return (
     <div>
       <PageHeader title="League" subtitle={week ? `Week ${week.week} · ${dayLabel(week.start)} – ${dayLabel(week.end)} · every matchup, the race, and who wants which free agent` : 'Projecting every matchup…'} />
+      {odds?.teams && <OddsCard odds={odds} />}
       <PowerCard power={power} error={powerError} />
       {error ? <div className="error-state"><h3>Couldn’t load the league</h3><p>{error}</p></div>
         : !week ? <div className="loading-container">{Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton skeleton-row" />)}</div>
           : <WeekView week={week} />}
       <SendToClaude />
     </div>
+  );
+}
+
+function OddsCard({ odds }) {
+  return (
+    <section className="card">
+      <h3>Playoff odds</h3>
+      <div className="table-wrap">
+        <table className="gn-cats">
+          <thead><tr><th>Team</th><th>Playoffs</th><th>#1 seed</th><th>Proj. cat wins</th></tr></thead>
+          <tbody>
+            {odds.teams.map((t, i) => (
+              <tr key={t.key} className={i + 1 === odds.spots ? 'odds-cut' : ''}>
+                <td className="stat"><b>{t.name}</b> <span className="meta">{t.manager}</span></td>
+                <td className="stat">{pctStr(t.playoffs)}{t.prev != null && Math.abs(t.playoffs - t.prev) >= 0.03 ? <span className={`meta ${t.playoffs > t.prev ? 'win' : 'lose'}`}> {t.playoffs > t.prev ? '▲' : '▼'}{Math.round(Math.abs(t.playoffs - t.prev) * 100)}</span> : null}</td>
+                <td className="stat">{pctStr(t.first)}</td>
+                <td className="stat">{t.projWins.toFixed(0)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="meta">Top {odds.spots} make the playoffs. The season is simulated 4,000 times from current rosters (injured players discounted) and the remaining schedule. Updated Mondays ({new Date(odds.savedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}).</p>
+    </section>
   );
 }
 
