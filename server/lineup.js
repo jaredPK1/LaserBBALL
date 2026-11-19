@@ -7,6 +7,7 @@ import { gamesBetween, etDate, addDays, nbaTeam } from './nba.js';
 import { roster } from './gamenight.js';
 import { IL_SLOTS, OUT, espnRates, rosOf, ratesFor, realWeight, teamGames } from './weekly.js';
 import { storeConfigured, getJson, setJson } from './store.js';
+import { notify, appUrl } from './notify.js';
 
 // Can a player with these eligible positions fill this lineup slot?
 export function fitsSlot(slot, pos = []) {
@@ -158,6 +159,16 @@ export async function lineupCron(req, res) {
     const p = await planFor(req, res, addDays(etDate(), 1));
     const r = mode === 'auto' ? await apply(req, res, p) : { applied: false, reason: 'Suggest mode' };
     const doc = { date: p.date, mode, steps: describe(p.moves), idleStarters: p.idleStarters, ...r };
+    // Ping your phone only when there's something to do (or that was done)
+    if (doc.steps.length) {
+      const day = new Date(`${p.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+      doc.notified = (await notify({
+        title: r.applied ? `Lineup set for ${day}` : `${doc.steps.length} lineup change${doc.steps.length === 1 ? '' : 's'} for ${day}`,
+        message: doc.steps.join('\n'),
+        click: `${appUrl(req)}/week`,
+        tags: [r.applied ? 'white_check_mark' : 'basketball'],
+      }).catch(e => ({ sent: false, reason: e.message }))).sent;
+    }
     await saveRun(doc);
     return doc;
   } catch (e) {

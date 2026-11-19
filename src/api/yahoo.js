@@ -159,3 +159,9 @@ export const getLineupConfig = () =>
 
 export const setLineupMode = (mode) =>
   apiCall(() => axios.post(`${BASE}/lineup/config`, { mode }));
+
+export const getNotifyConfig = () =>
+  apiCall(() => axios.get(`${BASE}/notify/config`));
+
+export const sendTestNotification = () =>
+  apiCall(() => axios.post(`${BASE}/notify/test`));

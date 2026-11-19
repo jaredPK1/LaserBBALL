@@ -10,6 +10,7 @@ import { weekReview } from './review.js';
 import { leagueWeek, powerWeek } from './league.js';
 import { exportLeague } from './export.js';
 import { lineupPlan, lineupApply, lineupConfig, lineupCron } from './lineup.js';
+import { notifyConfig, notifyTest } from './notify.js';
 import { draftPool } from './draft.js';
 import { espnDraftPool, loadPool } from './espn.js';
 import { evaluateStrategy, STRATEGIES, simulateSeason } from '../src/draft/sim.js';
@@ -210,6 +211,8 @@ app.post('/api/lineup/apply', wrap(lineupApply));
 app.get('/api/lineup/config', wrap(lineupConfig));
 app.post('/api/lineup/config', wrap(lineupConfig));
 app.get('/api/cron/lineup', wrap(lineupCron));
+app.get('/api/notify/config', wrap(notifyConfig));
+app.post('/api/notify/test', wrap(notifyTest));
 app.get('/api/draft/pool', wrap(draftPool));
 app.get('/api/draft/espn', wrap(espnDraftPool));
 // Grade real rosters: match names to the ESPN pool, then simulate many seasons (all-play H2H 9-cat).

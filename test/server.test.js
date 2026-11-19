@@ -29,6 +29,7 @@ const avg = { '9004003': '8/16', '5': '.500', '9007006': '4/5', '8': '.800', '10
 const roster = (players) => ({ fantasy_content: { team: [[{ team_key: 'x' }], { roster: { '0': { players: Object.assign({ count: players.length }, ...players.map((p, i) => ({ [i]: p }))) } } }] } });
 const teamNode = (key, name, mine, st) => ({ team: [[{ team_key: key }, { name }, ...(mine ? [{ is_owned_by_current_login: 1 }] : [])], { team_stats: stats(st) }] });
 
+const NTFY = [];
 const FIX = {
   'users;use_login=1/games;game_keys=nba/leagues/teams': { fantasy_content: { users: { '0': { user: [{ guid: 'g' }, { games: { '0': { game: [{ game_key: '466' }, { leagues: { '0': { league: [
     { league_key: '466.l.33458', league_id: '33458', name: 'Where Friendship Happens', current_week: 3, draft_status: 'predraft' },
@@ -139,6 +140,7 @@ before(async () => {
       KV.set(row.key, row.doc);
       return new Response(null, { status: 201 });
     }
+    if (url.startsWith('https://ntfy.sh/')) { NTFY.push({ topic: url.slice(16), title: opts.headers.Title, body: opts.body }); return new Response('{}'); }
     if (url.includes('fantasysports.yahooapis.com')) {
       const path = decodeURIComponent(url.split('/fantasy/v2/')[1].split('?')[0]);
       if (opts?.method === 'PUT') return new Response('Please provide valid credentials', { status: 401 }); // read-only token
@@ -477,6 +479,16 @@ test('lineup setter: plan, apply needs write access, nightly modes', async () =>
   assert.equal(run.mode, 'suggest', JSON.stringify(run));
   assert.ok(run.steps.includes('Start Bench Guy at Util'));
   assert.equal(KV.get('snap:lineup').date, run.date);
+  // Your phone gets tomorrow's moves
+  assert.equal(run.notified, true);
+  const ping = NTFY.at(-1);
+  assert.match(ping.topic, /^laserbball-[0-9a-f]{24}$/);
+  assert.match(ping.title, /lineup change/);
+  assert.match(ping.body, /Start Bench Guy at Util/);
+  const nc = await (await get('/api/notify/config')).json();
+  assert.equal(nc.topic, ping.topic);
+  assert.equal((await get('/api/notify/config', false)).status, 401);
+  assert.equal((await (await realFetch(`${base}/api/notify/test`, { method: 'POST', headers: { cookie } })).json()).sent, true);
   assert.equal((await (await realFetch(`${base}/api/cron/lineup`)).json()).skipped, 'ran recently');
 });
 
