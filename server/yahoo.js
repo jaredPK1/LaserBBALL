@@ -179,8 +179,11 @@ async function accessToken(req, res, force = false) {
 // Called once per page load before any Yahoo calls, so parallel requests that
 // follow all carry the fresh token instead of each refreshing on their own
 export async function warmToken(req, res) {
-  if (!currentSession(req)) return { ok: false };
+  const s = currentSession(req);
+  if (!s) return { ok: false };
   await accessToken(req, res);
+  // Make sure the morning job has a login to use, without waiting for a refresh
+  if (storeConfigured() && !(await ownerSession().catch(() => null))) await saveOwner(s);
   return { ok: true };
 }
 

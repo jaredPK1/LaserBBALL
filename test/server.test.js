@@ -468,6 +468,9 @@ test('lineup setter: plan, apply needs write access, nightly modes', async () =>
   assert.equal((await set.json()).mode, 'suggest');
   assert.ok(KV.get('auth:owner'), 'logins and refreshes save the owner for the nightly job');
   KV.delete('auth:owner');
+  await realFetch(`${base}/api/auth/warm`, { method: 'POST', headers: { cookie } });
+  assert.ok(KV.get('auth:owner'), 'opening the app saves it too');
+  KV.delete('auth:owner');
   KV.delete('snap:lineup');
   const noOwner = await (await realFetch(`${base}/api/cron/lineup`)).json();
   assert.equal(noOwner.skipped, 'no owner');
