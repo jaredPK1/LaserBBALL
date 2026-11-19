@@ -163,5 +163,8 @@ export const setLineupMode = (mode) =>
 export const getNotifyConfig = () =>
   apiCall(() => axios.get(`${BASE}/notify/config`));
 
+export const saveDiscordWebhook = (webhook) =>
+  apiCall(() => axios.post(`${BASE}/notify/config`, { webhook }));
+
 export const sendTestNotification = () =>
   apiCall(() => axios.post(`${BASE}/notify/test`));

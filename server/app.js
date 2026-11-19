@@ -212,6 +212,7 @@ app.get('/api/lineup/config', wrap(lineupConfig));
 app.post('/api/lineup/config', wrap(lineupConfig));
 app.get('/api/cron/lineup', wrap(lineupCron));
 app.get('/api/notify/config', wrap(notifyConfig));
+app.post('/api/notify/config', wrap(notifyConfig));
 app.post('/api/notify/test', wrap(notifyTest));
 app.get('/api/draft/pool', wrap(draftPool));
 app.get('/api/draft/espn', wrap(espnDraftPool));

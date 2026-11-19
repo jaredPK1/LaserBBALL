@@ -516,6 +516,7 @@ select.input-sm { width: auto; }
 /* Lineup setter */
 .lineup-modes { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
 .lineup-apply { margin: 8px 0; }
-.notify-topic { word-break: break-all; user-select: all; }
+.notify-row { display: flex; gap: 6px; margin: 6px 0; }
+.notify-input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border, rgba(255,255,255,0.15)); background: transparent; color: inherit; }
 .settings-steps { margin: 4px 0 8px; padding-left: 20px; }
 .settings-steps li { margin: 4px 0; }

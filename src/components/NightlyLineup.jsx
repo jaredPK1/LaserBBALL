@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { getLineupConfig, setLineupMode, startAuth, getNotifyConfig, sendTestNotification } from '../api/yahoo';
+import { getLineupConfig, setLineupMode, startAuth, getNotifyConfig, sendTestNotification, saveDiscordWebhook } from '../api/yahoo';
 
 const MODES = [
   ['off', 'Off', 'Nothing runs at night.'],
-  ['suggest', 'Suggest', 'Each evening (about 9pm ET) the app works out tomorrow’s best lineup and sends the moves to your phone. You make them in Yahoo.'],
+  ['suggest', 'Suggest', 'Each evening (about 9pm ET) the app works out tomorrow’s best lineup and posts the moves to your Discord. You make them in Yahoo.'],
   ['auto', 'Auto', 'Each evening (about 9pm ET) the app sets tomorrow’s lineup in Yahoo for you.'],
 ];
 const when = iso => new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
@@ -15,6 +15,13 @@ export default function NightlyLineup() {
   const [busy, setBusy] = useState(false);
   const [notify, setNotify] = useState(null);
   const [test, setTest] = useState(null);
+  const [hook, setHook] = useState('');
+  const saveHook = () => {
+    setTest(null);
+    saveDiscordWebhook(hook).then(r => { setNotify(r.data); setHook(''); return sendTestNotification(); })
+      .then(r => setTest(r.data.sent ? 'Connected: check your Discord channel.' : r.data.reason))
+      .catch(e => setTest(e.response?.data?.error || e.message));
+  };
 
   useEffect(() => {
     let live = true;
@@ -46,13 +53,22 @@ export default function NightlyLineup() {
           )}
           {notify && (
             <div className="notify-setup">
-              <p className="settings-note"><b>Get it on your phone</b> (free, no account):</p>
-              <ol className="settings-steps">
-                <li>Install the <b>ntfy</b> app (App Store or Google Play).</li>
-                <li>Tap <b>+</b>, and subscribe to this topic: <code className="notify-topic">{notify.topic}</code></li>
-                <li>Send a test: <button className="btn btn-ghost btn-sm" onClick={() => sendTestNotification().then(r => setTest(r.data.sent ? 'Sent: check your phone.' : r.data.reason)).catch(e => setTest(e.message))}>Send test</button> {test && <span className="meta">{test}</span>}</li>
-              </ol>
-              <p className="meta">Keep the topic private: anyone who has it can read your lineup notes. You only get a notification when there’s something to change.</p>
+              <p className="settings-note"><b>Discord</b> {notify.connected ? <span className="tag tag-green">Connected</span> : <span className="tag">Not connected</span>}</p>
+              {!notify.fromEnv && (
+                <>
+                  <ol className="settings-steps">
+                    <li>In Discord, open your server → the channel you want → <b>Edit Channel → Integrations → Webhooks → New Webhook</b>.</li>
+                    <li><b>Copy Webhook URL</b> and paste it here. It’s stored encrypted; don’t share it anywhere else.</li>
+                  </ol>
+                  <div className="notify-row">
+                    <input type="password" className="notify-input" placeholder="https://discord.com/api/webhooks/…" value={hook} onChange={e => setHook(e.target.value)} autoComplete="off" />
+                    <button className="btn btn-primary btn-sm" disabled={!hook} onClick={saveHook}>{notify.connected ? 'Replace' : 'Connect'}</button>
+                  </div>
+                </>
+              )}
+              {notify.connected && <button className="btn btn-ghost btn-sm" onClick={() => sendTestNotification().then(r => setTest(r.data.sent ? 'Sent: check Discord.' : r.data.reason)).catch(e => setTest(e.message))}>Send test</button>}
+              {test && <span className="meta"> {test}</span>}
+              <p className="meta">You only get a message when there’s something to change.</p>
             </div>
           )}
           <div>

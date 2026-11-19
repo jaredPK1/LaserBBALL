@@ -166,7 +166,6 @@ export async function lineupCron(req, res) {
         title: r.applied ? `Lineup set for ${day}` : `${doc.steps.length} lineup change${doc.steps.length === 1 ? '' : 's'} for ${day}`,
         message: doc.steps.join('\n'),
         click: `${appUrl(req)}/week`,
-        tags: [r.applied ? 'white_check_mark' : 'basketball'],
       }).catch(e => ({ sent: false, reason: e.message }))).sent;
     }
     await saveRun(doc);
