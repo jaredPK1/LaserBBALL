@@ -33,6 +33,17 @@ export async function notify({ title, message, click, embeds, channel = 'me' }) 
   return r.ok ? { sent: true } : { sent: false, reason: `Discord ${r.status}` };
 }
 
+// Post straight to a given webhook (league-mates' private channels)
+export async function postWebhook(url, embeds, username = 'LaserBBALL Intel') {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, embeds: embeds.slice(0, 10).map(e => ({ ...e, description: e.description ? String(e.description).slice(0, 4000) : undefined })) }),
+  });
+  return { sent: r.ok, status: r.status };
+}
+export const isWebhook = url => WEBHOOK.test(String(url || '').trim());
+
 export const appUrl = req => (process.env.PUBLIC_URL || `https://${req.headers['x-forwarded-host'] || req.headers.host}`).replace(/\/$/, '');
 
 const needAuth = req => { if (!isAuthed(req)) throw Object.assign(new Error('Not connected to Yahoo'), { status: 401 }); };

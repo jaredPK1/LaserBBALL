@@ -41,3 +41,7 @@ export async function listJson(prefix) {
   const rows = await rest(`${TABLE}?key=like.${encodeURIComponent(prefix)}*&select=key,doc`);
   return (rows || []).map(r => ({ key: r.key, doc: r.doc }));
 }
+
+export async function delJson(key) {
+  await rest(`${TABLE}?key=eq.${encodeURIComponent(key)}`, { method: 'DELETE' });
+}

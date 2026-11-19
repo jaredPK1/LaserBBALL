@@ -9,6 +9,7 @@ import { weekProjection, addsUsed, OUT } from './weekly.js';
 import { weekReview } from './review.js';
 import { lineupRun, lineupMode, lastRun, saveRun } from './lineup.js';
 import { notify, appUrl } from './notify.js';
+import { sendIntel } from './intel.js';
 import { storeConfigured, getJson, setJson } from './store.js';
 
 const NCATS = CATS.length;
@@ -86,10 +87,10 @@ export function chartUrl(series, start) {
   return `https://quickchart.io/chart?w=600&h=280&bkg=white&c=${encodeURIComponent(json)}`;
 }
 
-const seriesKey = week => `snap:daily:${week}`;
+const seriesKey = (week, team) => `snap:daily:${week}${team ? `:${team}` : ''}`;
 export const weekSeries = async week => (storeConfigured() ? (await getJson(seriesKey(week)).catch(() => null))?.days || [] : []);
 
-export async function buildReport(req, res, lineup) {
+export async function buildReport(req, res, lineup, { team } = {}) {
   const today = etDate();
   const proj = await weekProjection(withQuery(req, {}), res);
   const now = {
@@ -98,9 +99,9 @@ export async function buildReport(req, res, lineup) {
     winWeek: weekWinProb(proj.categories),
     cats: proj.categories.map(c => ({ name: c.name, mine: c.mineNow, opp: c.oppNow, p: c.winProb })),
   };
-  const series = (await weekSeries(proj.week)).filter(s => s.date !== today);
+  const series = (storeConfigured() ? (await getJson(seriesKey(proj.week, team)).catch(() => null))?.days || [] : []).filter(s => s.date !== today);
   const prev = series.at(-1) || null;
-  if (storeConfigured()) await setJson(seriesKey(proj.week), { week: proj.week, start: proj.start, days: [...series, now] });
+  if (storeConfigured()) await setJson(seriesKey(proj.week, team), { week: proj.week, start: proj.start, days: [...series, now] });
   const { flips, moves } = changes(prev, now);
 
   const yesterday = addDays(today, -1);
@@ -181,7 +182,9 @@ export async function dailyCron(req, res) {
     const report = await buildReport(req, res, lineup.error ? null : lineup);
     if (lineup.error) report.embeds.push({ title: 'Lineup check failed', description: lineup.error });
     const sent = await notify({ embeds: report.embeds }).catch(e => ({ sent: false, reason: e.message }));
-    const doc = { date: lineup.date, mode, steps: lineup.steps || [], applied: !!lineup.applied, reason: lineup.reason, notified: sent.sent, notifyError: sent.sent ? undefined : sent.reason, winWeek: report.now.winWeek };
+    // League-mates who signed up for their own private report
+    const intel = await sendIntel(req, res).catch(e => ({ error: e.message }));
+    const doc = { date: lineup.date, mode, steps: lineup.steps || [], applied: !!lineup.applied, reason: lineup.reason, notified: sent.sent, notifyError: sent.sent ? undefined : sent.reason, winWeek: report.now.winWeek, intel };
     await saveRun(doc);
     return doc;
   } catch (e) {

@@ -5,6 +5,7 @@ import PageHeader from '../components/PageHeader';
 import SendToClaude from '../components/SendToClaude';
 import NightlyLineup from '../components/NightlyLineup';
 import LeagueRecap from '../components/LeagueRecap';
+import IntelAdmin from '../components/IntelAdmin';
 
 // NBA seasons straddle two years; Yahoo labels them by the starting year
 const currentSeason = () => {
@@ -77,6 +78,7 @@ export default function Settings({ authed }) {
 
       <NightlyLineup />
       <LeagueRecap />
+      <IntelAdmin />
       <SendToClaude />
 
       <section className="card">

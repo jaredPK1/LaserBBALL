@@ -536,3 +536,6 @@ select.input-sm { width: auto; }
 .recap-embed { border-left: 3px solid var(--blue); padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 4px; }
 .recap-embed p { margin: 4px 0; white-space: pre-line; font-size: 13px; }
 .recap-field { margin-top: 6px; }
+.join-page { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
+.join-field { display: grid; gap: 4px; margin: 10px 0; }
+.join-field select { padding: 6px 8px; border-radius: 6px; background: transparent; color: inherit; border: 1px solid var(--border); }

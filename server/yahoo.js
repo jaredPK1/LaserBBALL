@@ -301,7 +301,10 @@ export async function myContext(req, res) {
     throw Object.assign(new Error(`No ${wanted ? `league ${wanted}` : 'NBA league'} found for this Yahoo login this season.${seen} You may be signed into a different Yahoo account than the one in your league.`), { status: 404 });
   }
   const league = leagues.find(l => String(l.info.league_id) === String(wanted)) || leagues[0];
-  const mine = league.teams.find(t => t.mine);
+  // Server-side only (the morning job building a league-mate's report):
+  // act as another team in the same league
+  const as = typeof req._asTeam === 'string' && req._asTeam.startsWith(`${league.info.league_key}.t.`) ? req._asTeam : null;
+  const mine = as ? { key: as, name: league.teams.find(t => t.key === as)?.name } : league.teams.find(t => t.mine);
   return {
     leagueKey: league.info.league_key,
     leagueId: league.info.league_id,

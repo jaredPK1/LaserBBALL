@@ -149,6 +149,12 @@ export async function lineupRun(req, res, mode) {
   return doc;
 }
 
+// Suggestions only, nothing saved: for league-mates' morning reports
+export async function lineupSuggest(req, res) {
+  const p = await planFor(req, res, addDays(etDate(), 1));
+  return { date: p.date, steps: describe(p.moves), idleStarters: p.idleStarters, lineup: p.lineup, applied: false };
+}
+
 export const lineupMode = async () => (await getJson(CFG).catch(() => null))?.mode || 'suggest';
 export const lastRun = () => getJson(RUN).catch(() => null);
 export { saveRun };

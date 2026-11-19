@@ -186,3 +186,18 @@ export const previewRecap = () =>
 
 export const sendRecapNow = () =>
   apiCall(() => axios.post(`${BASE}/recap/send`, null, { timeout: 60000 }));
+
+export const getJoinTeams = (code) =>
+  axios.get(`${BASE}/join/teams`, { params: { code }, timeout: 30000 });
+
+export const joinIntel = (body) =>
+  axios.post(`${BASE}/join`, body, { timeout: 30000 });
+
+export const getIntelAdmin = () =>
+  apiCall(() => axios.get(`${BASE}/intel/admin`));
+
+export const intelAdminAction = (body) =>
+  apiCall(() => axios.post(`${BASE}/intel/admin`, body));
+
+export const postIntelInstructions = () =>
+  apiCall(() => axios.post(`${BASE}/intel/instructions`));

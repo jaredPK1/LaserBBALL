@@ -136,10 +136,12 @@ before(async () => {
         const key = q.replace(/^eq\./, '');
         return json(KV.has(key) ? [{ doc: KV.get(key) }] : []);
       }
+      if (opts.method === 'DELETE') { KV.delete(decodeURIComponent(new URL(url).searchParams.get('key')).replace(/^eq\./, '')); return new Response(null, { status: 204 }); }
       const row = JSON.parse(opts.body);
       KV.set(row.key, row.doc);
       return new Response(null, { status: 201 });
     }
+    if (url.startsWith('https://discord.com/api/webhooks/404/')) return new Response('{"message":"Unknown Webhook"}', { status: 404 });
     if (url.startsWith('https://discord.com/api/webhooks/')) { const b = JSON.parse(opts.body); DISCORD.push({ ...b.embeds[0], embeds: b.embeds, hook: url }); return new Response(null, { status: 204 }); }
     if (url.includes('fantasysports.yahooapis.com')) {
       const path = decodeURIComponent(url.split('/fantasy/v2/')[1].split('?')[0]);
@@ -557,4 +559,60 @@ test('league recap: neutral morning post to the league channel', async () => {
   // Off switch is respected by the cron
   await realFetch(`${base}/api/recap/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ on: false }) });
   assert.equal((await (await realFetch(`${base}/api/cron/league`)).json()).skipped, 'off');
+});
+
+test('private intel: league-mates sign up with the join code and get their own morning report', async () => {
+  const mu = FIX['team/466.l.33458.t.1/matchups;weeks=3'];
+  FIX['team/466.l.33458.t.2/matchups;weeks=3'] = { fantasy_content: { team: [[{ team_key: '466.l.33458.t.2' }], mu.fantasy_content.team[1]] } };
+  assert.equal((await get('/api/intel/admin', false)).status, 401);
+  const admin = await (await get('/api/intel/admin')).json();
+  assert.match(admin.code, /^[0-9A-F]{8}$/);
+  assert.match(admin.joinUrl, new RegExp(`/join\\?code=${admin.code}$`));
+
+  // Public sign-up page: wrong code refused; right code lists teams using the
+  // owner's login, and a forced token refresh must not leak a session cookie
+  const { seal: sealIt } = await import('../server/session.js');
+  const { clientTag: tag } = await import('../server/yahoo.js');
+  KV.set('auth:owner', { s: sealIt({ refresh_token: 'RT', guid: 'GUID-OWNER', client: tag(), scope: 'fspt-r' }) });
+  KV.delete('tok:y:GUID-OWNER');
+  assert.equal((await get('/api/join/teams?code=WRONG', false)).status, 403);
+  const tr = await get(`/api/join/teams?code=${admin.code}`, false);
+  const teams = await tr.json();
+  assert.equal(tr.status, 200, JSON.stringify(teams));
+  assert.ok(!(tr.headers.getSetCookie() || []).some(c => c.startsWith('hi_sess=')), 'owner session never set on a visitor');
+  assert.deepEqual(teams.teams.map(t => t.name), ['Me FC', 'Them']);
+
+  const join = body => realFetch(`${base}/api/join`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal((await join({ code: admin.code, teamKey: '466.l.33458.t.2', webhook: 'nope' })).status, 400);
+  assert.equal((await join({ code: 'WRONG', teamKey: '466.l.33458.t.2', webhook: 'https://discord.com/api/webhooks/7/them-hook' })).status, 403);
+  const ok = await (await join({ code: admin.code, teamKey: '466.l.33458.t.2', webhook: 'https://discord.com/api/webhooks/7/them-hook' })).json();
+  assert.equal(ok.team, 'Them');
+  assert.match(DISCORD.at(-1).title, /^You’re in/);
+  assert.ok(!JSON.stringify(KV.get('sub:466.l.33458.t.2')).includes('them-hook'), 'webhook stored encrypted');
+  // A webhook Discord says is gone gets the sign-up refused
+  assert.equal((await join({ code: admin.code, teamKey: '466.l.33458.t.1', webhook: 'https://discord.com/api/webhooks/404/x' })).status, 400);
+
+  // Morning job: their report, about their team
+  await realFetch(`${base}/api/lineup/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'suggest' }) });
+  KV.delete('snap:lineup');
+  const n = DISCORD.length;
+  const run = await (await realFetch(`${base}/api/cron/daily`)).json();
+  assert.equal(run.intel.sent, 1, JSON.stringify(run));
+  const theirs = DISCORD.slice(n).find(d => d.hook.endsWith('/7/them-hook'));
+  assert.match(theirs.title, /^Week 3 vs .+: \d+% to win$/);
+  assert.ok(KV.get('snap:daily:3:466.l.33458.t.2'), 'their chart history is kept separately from yours');
+  assert.ok(KV.get('sub:466.l.33458.t.2').lastSent);
+
+  // Deleting the webhook unsubscribes them
+  const sub = KV.get('sub:466.l.33458.t.2');
+  KV.set('sub:466.l.33458.t.2', { ...sub, s: sealIt({ url: 'https://discord.com/api/webhooks/404/gone' }) });
+  KV.delete('snap:lineup');
+  const run2 = await (await realFetch(`${base}/api/cron/daily`)).json();
+  assert.equal(run2.intel.removed, 1, JSON.stringify(run2));
+  assert.equal(KV.has('sub:466.l.33458.t.2'), false);
+
+  // Owner can post the how-to to the league channel
+  const how = await (await realFetch(`${base}/api/intel/instructions`, { method: 'POST', headers: { cookie } })).json();
+  assert.equal(how.sent, true);
+  assert.match(DISCORD.at(-1).description, new RegExp(`/join\\?code=${admin.code}`));
 });
