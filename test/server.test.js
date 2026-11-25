@@ -708,3 +708,51 @@ test('drop advice signals: rostered %, role trend, playoff games, position cover
   assert.equal(opt['Jayson Tatum'].playoffGames, 1);
   assert.equal(s.drop.name, 'Bench Guy', 'still the drop: low value, 12% rostered, shrinking role');
 });
+
+test('DM intel, injured-starter warning, and trade grades in the recap', async () => {
+  const user = { member: { user: { id: 'u9', username: 'zed' } }, guild_id: 'g1', channel_id: 'c1', token: 'tok9' };
+  const crypto = await import('node:crypto');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  process.env.DISCORD_PUBLIC_KEY = publicKey.export({ format: 'der', type: 'spki' }).subarray(12).toString('hex');
+  const send = body => { const raw = JSON.stringify(body), ts = String(Math.floor(Date.now() / 1000)); return realFetch(`${base}/api/discord/interactions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-signature-timestamp': ts, 'x-signature-ed25519': crypto.sign(null, Buffer.from(ts + raw), privateKey).toString('hex') }, body: raw }); };
+  const cmd = (name, options = []) => send({ type: 2, ...user, data: { name, options } }).then(r => r.json());
+
+  assert.match((await cmd('intel', [{ name: 'mode', value: 'on' }])).data.content, /Link your team first/);
+  await cmd('iam', [{ name: 'team', value: '466.l.33458.t.1' }]);
+  const on = await cmd('intel', [{ name: 'mode', value: 'on' }]);
+  assert.match(on.data.content, /Check your DMs/);
+  assert.equal(KV.get('dmsub:u9').teamKey, '466.l.33458.t.1');
+  assert.ok(BOT.some(b => b.url.endsWith('/users/@me/channels') && b.body.recipient_id === 'u9'));
+
+  // Morning: the DM carries the report, led by the injured-starter warning
+  const rosterKey = `team/466.l.33458.t.1/roster;date=${addDays(today, 1)}/players/stats;type=average_season`;
+  const saved = FIX[rosterKey];
+  FIX[rosterKey] = roster([player('p1', 'Jayson Tatum', 'BOS', 'SF,PF', 'SF', avg, 'O'), player('p2', 'Bench Guy', 'LAL', 'PG', 'BN', weak), player('p3', 'Idle Man', 'BOS', 'C', 'C', avg)]);
+  KV.delete('snap:lineup');
+  const n = BOT.length;
+  const run = await (await realFetch(`${base}/api/cron/daily`)).json();
+  FIX[rosterKey] = saved;
+  assert.ok(run.intel.sent >= 1, JSON.stringify(run));
+  const dm = BOT.slice(n).find(b => b.url.endsWith('/channels/m1/messages') && b.body.embeds?.length > 1);
+  assert.match(dm.body.embeds[0].title, /^⚠️ Jayson Tatum \(O\) is in your starting lineup$/, JSON.stringify(dm.body.embeds[0]));
+  assert.ok(KV.get('dmsub:u9').lastSent);
+  assert.match((await cmd('intel', [{ name: 'mode', value: 'off' }])).data.content, /No more/);
+  assert.equal(KV.has('dmsub:u9'), false);
+
+  // Trade grades: Them sent Bench Guy to Me FC for Jokić (rosters show the after state)
+  FIX['league/466.l.33458/transactions;types=trade'] = { fantasy_content: { league: [{}, { transactions: { '0': { transaction: [
+    { transaction_key: 'trade-1', type: 'trade', status: 'successful', timestamp: String(Math.floor(Date.now() / 1000)) },
+    { players: { count: 2,
+      '0': { player: [[{ player_key: 'p2' }, { name: { full: 'Bench Guy' } }], { transaction_data: [{ type: 'trade', source_team_key: '466.l.33458.t.2', destination_team_key: '466.l.33458.t.1' }] }] },
+      '1': { player: [[{ player_key: 'o1' }, { name: { full: 'Nikola Jokić' } }], { transaction_data: [{ type: 'trade', source_team_key: '466.l.33458.t.1', destination_team_key: '466.l.33458.t.2' }] }] } } },
+  ] }, count: 1 } }] } };
+  const pv = await (await get('/api/recap/preview')).json();
+  const tg = pv.embeds.find(e => e.title === '💱 Trade grades');
+  assert.match(tg.description, /^\*\*Them\*\* gets Nikola Jokić · \*\*Me FC\*\* gets Bench Guy/, JSON.stringify(tg));
+  assert.match(tg.description, /Them \*\*[AB]\*\*.*Me FC \*\*[DF]\*\*/, 'getting Jokić for a scrub grades well');
+  await realFetch(`${base}/api/recap/config`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ on: true }) });
+  await realFetch(`${base}/api/recap/send`, { method: 'POST', headers: { cookie } });
+  assert.deepEqual(KV.get('snap:tradesGraded').ids, ['trade-1']);
+  const again = await (await get('/api/recap/preview')).json();
+  assert.ok(!again.embeds.some(e => e.title === '💱 Trade grades'), 'graded once');
+});

@@ -4,12 +4,14 @@
 // matchup's score and odds, categories that changed hands overnight, stars of
 // the night, a stat corner, and the standings race. Mondays add last week's
 // results and power-ranking movers.
-import { yget, ownerSession, myContext, isAuthed } from './yahoo.js';
+import { yget, merge, each, ownerSession, myContext, isAuthed } from './yahoo.js';
 import { etDate, addDays } from './nba.js';
 import { CATS } from './gamenight.js';
 import { leagueWeek, powerWeek, parseScoreboard } from './league.js';
 import { withQuery, leader, nightLines, fmtLine, score, weekWinProb, changes } from './report.js';
 import { notify } from './notify.js';
+import { espnRates } from './weekly.js';
+import { leagueRosters, seasonStrength } from './manage.js';
 import { storeConfigured, getJson, setJson } from './store.js';
 
 const PLAYOFF_SPOTS = 6;
@@ -172,6 +174,9 @@ export async function buildRecap(req, res) {
   if (teamThrees?.n >= 10) corner.push(`Team three-point barrage: **${teams.get(teamThrees.k).name}** hit ${Math.round(teamThrees.n)} as a team.`);
   if (corner.length) embeds.push({ title: '📊 Stat corner', description: corner.join('\n') });
 
+  const trades = await tradeGrades(req, res).catch(() => null);
+  if (trades) embeds.push(trades.embed);
+
   // Standings race: projected after this week, with the playoff line
   const race = lw.standings.map(t => {
     const move = t.rank && t.projRank ? t.rank - t.projRank : 0;
@@ -189,10 +194,83 @@ export async function buildRecap(req, res) {
     embeds.push({ title: '🏆 Power rankings', description: lines2.join('\n') });
   }
 
-  return { embeds: embeds.slice(0, 10) };
+  return { embeds: embeds.slice(0, 10), tradeIds: trades?.ids || [] };
 }
 
 // Final category results for each of last week's matchups
+// ── Trade grades ────────────────────────────────────────────────────────────
+// Recent completed trades, graded by the season model: each side's average
+// category wins per week against the league, before vs after the deal
+const GRADED = 'snap:tradesGraded';
+export const letter = d => (d >= 0.15 ? 'A' : d >= 0.07 ? 'B' : d >= -0.03 ? 'C' : d >= -0.1 ? 'D' : 'F');
+
+export function parseTrades(data, since) {
+  const out = [];
+  for (const t of each(merge(data?.fantasy_content?.league?.slice?.(1) || []).transactions, 'transaction')) {
+    const meta = merge(t[0] || t);
+    if (meta.type !== 'trade' || (meta.status && meta.status !== 'successful')) continue;
+    const ts = Number(meta.timestamp) * 1000;
+    if (!ts || ts < since) continue;
+    const moves = [];
+    for (const pl of each(merge(t.slice?.(1) || []).players, 'player')) {
+      const info = merge(pl[0]);
+      const raw = merge(pl.slice(1)).transaction_data;
+      for (const td of (Array.isArray(raw) ? raw : [raw]).filter(Boolean)) {
+        if (td.source_team_key && td.destination_team_key) moves.push({ key: info.player_key, name: info.name?.full, from: td.source_team_key, to: td.destination_team_key });
+      }
+    }
+    if (moves.length) out.push({ id: meta.transaction_key || `${ts}`, ts, moves });
+  }
+  return out;
+}
+
+// rosters: [{ key, name, manager, players: [{ key, ... }] }] as they are now (after the trade)
+export function gradeTrade(trade, rosters) {
+  const sides = [...new Set(trade.moves.flatMap(m => [m.from, m.to]))];
+  if (sides.length !== 2) return null;
+  const byKey = new Map(rosters.map(t => [t.key, t]));
+  if (!sides.every(k => byKey.has(k))) return null;
+  const playerOf = new Map(rosters.flatMap(t => t.players.map(p => [p.key, p])));
+  const before = new Map(sides.map(k => {
+    const received = new Set(trade.moves.filter(m => m.to === k).map(m => m.key));
+    const given = trade.moves.filter(m => m.from === k).map(m => playerOf.get(m.key)).filter(Boolean);
+    return [k, [...byKey.get(k).players.filter(p => !received.has(p.key)), ...given]];
+  }));
+  const rest = rosters.filter(t => !sides.includes(t.key)).map(t => t.players);
+  const [a, b] = sides;
+  const strength = (k, mine, theirs) => seasonStrength(mine, [theirs, ...rest]).expected;
+  return sides.map(k => {
+    const o = k === a ? b : a;
+    const delta = strength(k, byKey.get(k).players, byKey.get(o).players) - strength(k, before.get(k), before.get(o));
+    return { key: k, name: byKey.get(k).name, gets: trade.moves.filter(m => m.to === k).map(m => m.name), delta, grade: letter(delta) };
+  }).sort((x, y) => y.delta - x.delta); // the side that did better first
+}
+
+async function tradeGrades(req, res) {
+  if (!storeConfigured()) return null;
+  const ctx = await myContext(req, res);
+  const data = await yget(req, res, `league/${ctx.leagueKey}/transactions;types=trade`).catch(() => null);
+  const done = new Set((await getJson(GRADED).catch(() => null))?.ids || []);
+  const fresh = parseTrades(data, Date.now() - 7 * 864e5).filter(t => !done.has(t.id));
+  if (!fresh.length) return null;
+  const rosters = await leagueRosters(req, res, ctx, await espnRates());
+  const lines = [];
+  for (const t of fresh) {
+    const g = gradeTrade(t, rosters);
+    if (!g) continue;
+    const [x, y] = g;
+    const winner = Math.abs(x.delta - y.delta) < 0.04 ? 'Fair deal by the numbers.' : `The model likes **${(x.delta > y.delta ? x : y).name}**’s side.`;
+    lines.push(`**${x.name}** gets ${x.gets.join(' + ')} · **${y.name}** gets ${y.gets.join(' + ')}\n${x.name} **${x.grade}** (${x.delta >= 0 ? '+' : ''}${x.delta.toFixed(2)} cats/week) · ${y.name} **${y.grade}** (${y.delta >= 0 ? '+' : ''}${y.delta.toFixed(2)}). ${winner}`);
+  }
+  return lines.length ? { embed: { title: '💱 Trade grades', description: lines.join('\n\n') + '\n_Season model: average category wins per week against the league, before vs after._' }, ids: fresh.map(t => t.id) } : null;
+}
+
+export async function markTradesGraded(ids) {
+  if (!ids?.length || !storeConfigured()) return;
+  const cur = (await getJson(GRADED).catch(() => null))?.ids || [];
+  await setJson(GRADED, { ids: [...new Set([...cur, ...ids])].slice(-200) });
+}
+
 export async function lastWeekResults(req, res, week) {
   const ctx = await myContext(req, res);
   const data = await yget(req, res, `league/${ctx.leagueKey}/scoreboard;week=${week}`);
@@ -219,11 +297,12 @@ export async function recapConfig(req) {
   return { on: cfg?.on !== false, lastRun: last };
 }
 
-export const recapPreview = (req, res) => buildRecap(req, res);
+export const recapPreview = (req, res) => buildRecap(req, res).then(r => ({ embeds: r.embeds }));
 
 export async function recapSendNow(req, res) {
   const r = await buildRecap(req, res);
   const sent = await notify({ embeds: r.embeds, channel: 'league' });
+  if (sent.sent) await markTradesGraded(r.tradeIds);
   await setJson(RUN, { ranAt: new Date().toISOString(), manual: true, sent: sent.sent, reason: sent.reason }).catch(() => {});
   return sent;
 }
@@ -241,6 +320,7 @@ export async function recapCron(req, res) {
   try {
     const r = await buildRecap(req, res);
     const sent = await notify({ embeds: r.embeds, channel: 'league' });
+    if (sent.sent) await markTradesGraded(r.tradeIds);
     const doc = { ranAt: new Date().toISOString(), sent: sent.sent, reason: sent.reason };
     await setJson(RUN, doc);
     return doc;

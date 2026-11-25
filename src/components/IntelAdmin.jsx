@@ -21,7 +21,7 @@ export default function IntelAdmin() {
   return (
     <section className="card">
       <h3>Private intel for the league</h3>
-      <p className="settings-note">League-mates can get their own private morning report in their own Discord channel. They sign up with the link below; nobody else needs Yahoo. Reports go out with yours each morning.</p>
+      <p className="settings-note">League-mates can get their own private morning report in their own Discord channel. Easiest: they type /iam then /intel on in Discord and get it by DM. Or they sign up a private channel with the link below. Nobody else needs Yahoo. Reports go out with yours each morning.</p>
       {data && (
         <>
           <p className="settings-note">Sign-up link: <code className="notify-topic">{data.joinUrl}</code></p>
@@ -31,13 +31,14 @@ export default function IntelAdmin() {
           </div>
           {data.subs.length === 0 ? <p className="meta">No one has signed up yet.</p> : (
             <table className="gn-cats">
-              <thead><tr><th>Team</th><th>Last sent</th><th></th></tr></thead>
+              <thead><tr><th>Team</th><th>Via</th><th>Last sent</th><th></th></tr></thead>
               <tbody>
                 {data.subs.map(s => (
-                  <tr key={s.teamKey}>
+                  <tr key={s.id}>
                     <td className="stat">{s.teamName} <span className="meta">{s.manager}</span>{s.lastError && <div className="meta">⚠ {s.lastError}</div>}</td>
+                    <td className="stat">{s.via}</td>
                     <td className="stat">{when(s.lastSent)}</td>
-                    <td className="stat"><button className="btn btn-ghost btn-sm" onClick={() => act({ remove: s.teamKey })}>Remove</button></td>
+                    <td className="stat"><button className="btn btn-ghost btn-sm" onClick={() => act({ remove: s.id })}>Remove</button></td>
                   </tr>
                 ))}
               </tbody>

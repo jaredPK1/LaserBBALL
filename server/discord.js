@@ -10,7 +10,7 @@ import { espnRates, ratesFor, rosOf, realWeight, nick } from './weekly.js';
 import { leagueRosters, findTrades } from './manage.js';
 import { cachedOdds, PLAYOFF_SPOTS } from './odds.js';
 import { loadSeasons, currentManagers, rivalry, rivalryLine, seasonLabel } from './rivalry.js';
-import { storeConfigured, getJson, setJson } from './store.js';
+import { storeConfigured, getJson, setJson, delJson } from './store.js';
 
 const API = 'https://discord.com/api/v10';
 const EPHEMERAL = 64;
@@ -33,6 +33,19 @@ async function bot(path, init = {}) {
   const text = await r.text();
   if (!r.ok) throw bad(`Discord ${r.status}: ${text.slice(0, 200)}`, 502);
   return text ? JSON.parse(text) : null;
+}
+
+// DM a user (needs them to allow DMs from server members). Never throws.
+export async function sendDM(userId, embeds) {
+  if (!botConfigured()) return { sent: false, status: 0, reason: 'bot not set up' };
+  const call = (path, body) => fetch(`${API}${path}`, { method: 'POST', headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  try {
+    const ch = await call('/users/@me/channels', { recipient_id: String(userId) });
+    if (!ch.ok) return { sent: false, status: ch.status, reason: `Discord ${ch.status}` };
+    const { id } = await ch.json();
+    const r = await call(`/channels/${id}/messages`, { embeds: embeds.slice(0, 10), allowed_mentions: { parse: [] } });
+    return r.ok ? { sent: true, status: r.status } : { sent: false, status: r.status, reason: r.status === 403 ? 'their DMs are closed' : `Discord ${r.status}` };
+  } catch (e) { return { sent: false, status: 0, reason: e.message }; }
 }
 
 async function ownerReq(req) {
@@ -66,6 +79,7 @@ export function commandDefs(teams) {
     { name: 'compare', description: 'Compare two players', options: [{ type: 3, name: 'player1', description: 'First player', required: true }, { type: 3, name: 'player2', description: 'Second player', required: true }] },
     { name: 'trades', description: 'Trade ideas for your team (only you see them)' },
     { name: 'pickem', description: 'Pick’em leaderboard' },
+    { name: 'intel', description: 'Get your private morning report by DM', options: [{ type: 3, name: 'mode', description: 'on or off', required: true, choices: [{ name: 'on', value: 'on' }, { name: 'off', value: 'off' }] }] },
     { name: 'setup', description: 'Commissioner: post the weekly pick’em in this channel', default_member_permissions: '32' },
   ];
 }
@@ -115,7 +129,24 @@ async function cmdMatchup(i) {
 async function cmdIam(i) {
   const team = opt(i, 'team');
   await setJson(`discord:link:${userOf(i).id}`, { teamKey: team, name: nameOf(i), at: new Date().toISOString() });
+  // Already getting morning DMs? Follow the new team
+  const dm = await getJson(`dmsub:${userOf(i).id}`).catch(() => null);
+  if (dm) await setJson(`dmsub:${userOf(i).id}`, { ...dm, teamKey: team });
   return reply({ content: 'Linked. /matchup, /trades and /rivalry now default to your team.' }, true);
+}
+
+async function cmdIntel(i) {
+  const uid = userOf(i).id;
+  if (opt(i, 'mode') === 'off') {
+    await delJson(`dmsub:${uid}`).catch(() => {});
+    return reply({ content: 'Done. No more morning DMs.' }, true);
+  }
+  const team = await linked(i);
+  if (!team) return reply({ content: 'Link your team first with /iam, then run /intel on.' }, true);
+  const hi = await sendDM(uid, [{ title: 'You’re in 👋', description: 'Every morning (about 8am ET) I’ll DM you your matchup odds with a chart, last night’s recap, tomorrow’s best lineup moves, and a warning if an injured player is in your lineup. Stop anytime with /intel off.' }]);
+  if (!hi.sent) return reply({ content: `I couldn’t DM you (${hi.reason}). Turn on **Direct Messages** for this server (Server name → Privacy Settings), then run /intel on again.` }, true);
+  await setJson(`dmsub:${uid}`, { userId: uid, teamKey: team, name: nameOf(i), at: new Date().toISOString() });
+  return reply({ content: 'Check your DMs. Your first report arrives tomorrow morning.' }, true);
 }
 
 async function cmdPickem() {
@@ -274,7 +305,7 @@ export async function interactions(req) {
   if (i.type === 3 && String(i.data?.custom_id).startsWith('pk:')) return onPick(i);
   if (i.type !== 2) return reply({ content: 'Unsupported.' }, true);
   const name = i.data?.name;
-  const fast = { odds: cmdOdds, matchup: cmdMatchup, iam: cmdIam, pickem: cmdPickem, setup: cmdSetup }[name];
+  const fast = { odds: cmdOdds, matchup: cmdMatchup, iam: cmdIam, pickem: cmdPickem, setup: cmdSetup, intel: cmdIntel }[name];
   if (fast) return fast(i);
   const slow = SLOW[name];
   if (!slow) return reply({ content: 'Unknown command.' }, true);

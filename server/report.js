@@ -119,6 +119,17 @@ export async function buildReport(req, res, lineup, { team } = {}) {
   const url = `${appUrl(req)}/week`;
   const embeds = [];
 
+  // The mistake that costs the most: an injured player left in tomorrow's lineup
+  const idle = new Set(lineup?.idleStarters || []);
+  const outStarting = (lineup?.lineup || []).filter(p => idle.has(p.name) && OUT.has(p.status));
+  if (outStarting.length && !lineup?.applied) {
+    embeds.push({
+      title: `⚠️ ${outStarting.map(p => `${p.name} (${p.status})`).join(', ')} ${outStarting.length === 1 ? 'is' : 'are'} in your starting lineup`,
+      description: `Fix it in Yahoo before midnight. The moves are below under Tomorrow’s lineup.`,
+      color: 0xE5484D,
+    });
+  }
+
   const standing = proj.categories.map(c => {
     const l = leader(CATS.find(x => x.name === c.name) || {}, c.mineNow, c.oppNow);
     return `${l === 'me' ? '🟢' : l === 'opp' ? '🔴' : '⚪'} ${c.name} ${pct(c.winProb)}`;

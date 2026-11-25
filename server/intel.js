@@ -76,9 +76,17 @@ export async function joinSignup(req) {
 export async function intelAdmin(req) {
   needAuth(req);
   if (req.method === 'POST' && req.body?.regenerate) await joinCode(true);
-  if (req.method === 'POST' && req.body?.remove) await delJson(SUB(String(req.body.remove)));
-  const subs = (await listJson('sub:')).filter(s => s.doc?.teamKey)
-    .map(({ doc }) => ({ teamKey: doc.teamKey, teamName: doc.teamName, manager: doc.manager, joinedAt: doc.joinedAt, lastSent: doc.lastSent || null, lastError: doc.lastError || null }));
+  if (req.method === 'POST' && req.body?.remove) {
+    const id = String(req.body.remove);
+    await delJson(id.startsWith('dm:') ? `dmsub:${id.slice(3)}` : SUB(id));
+  }
+  // Team names for DM subscribers, from the latest league recap
+  const latest = await getJson('snap:recap:latest').catch(() => null);
+  const names = Object.fromEntries(Object.entries((latest ? (await getJson(`snap:recap:${latest.week}`).catch(() => null))?.teams : null) || {}).map(([k, v]) => [k, v.name]));
+  const subs = [
+    ...(await listJson('sub:')).filter(s => s.doc?.teamKey).map(({ doc }) => ({ id: doc.teamKey, via: 'Channel', teamKey: doc.teamKey, teamName: doc.teamName, manager: doc.manager, joinedAt: doc.joinedAt, lastSent: doc.lastSent || null, lastError: doc.lastError || null })),
+    ...(await listJson('dmsub:')).filter(s => s.doc?.userId).map(({ doc }) => ({ id: `dm:${doc.userId}`, via: 'DM', teamKey: doc.teamKey, teamName: names[doc.teamKey] || doc.teamKey, manager: doc.name, joinedAt: doc.at, lastSent: doc.lastSent || null, lastError: doc.lastError || null })),
+  ];
   const code = await joinCode();
   return { code, joinUrl: `${appUrl(req)}/join?code=${code}`, subs };
 }
@@ -109,33 +117,46 @@ export async function intelInstructions(req) {
 }
 
 // ── Morning send (called from the daily job, owner session on req) ───────────
+// One report per team, delivered to everyone who wants it: private-channel
+// webhooks (sub:<team>) and bot DMs (dmsub:<discord user>)
 export async function sendIntel(req, res) {
   if (!storeConfigured()) return { sent: 0 };
-  const subs = (await listJson('sub:')).map(s => s.doc).filter(d => d?.teamKey && d.s);
-  if (!subs.length) return { sent: 0 };
+  const hooks = (await listJson('sub:')).map(s => s.doc).filter(d => d?.teamKey && d.s).map(d => ({ kind: 'hook', key: SUB(d.teamKey), doc: d }));
+  const dms = (await listJson('dmsub:')).map(s => s.doc).filter(d => d?.teamKey && d.userId).map(d => ({ kind: 'dm', key: `dmsub:${d.userId}`, doc: d }));
+  const all = [...hooks, ...dms];
+  if (!all.length) return { sent: 0 };
+  const byTeam = new Map();
+  for (const r of all) byTeam.set(r.doc.teamKey, [...(byTeam.get(r.doc.teamKey) || []), r]);
   const { buildReport } = await import('./report.js');
   const { lineupSuggest } = await import('./lineup.js');
+  const { sendDM } = await import('./discord.js');
   const out = { sent: 0, failed: 0, removed: 0 };
-  // A few at a time keeps the run inside the function's time limit
-  for (let i = 0; i < subs.length; i += 3) {
-    await Promise.all(subs.slice(i, i + 3).map(async sub => {
+  const teams = [...byTeam.keys()];
+  // A few teams at a time keeps the run inside the function's time limit
+  for (let i = 0; i < teams.length; i += 3) {
+    await Promise.all(teams.slice(i, i + 3).map(async teamKey => {
       const r = Object.create(req);
-      r._asTeam = sub.teamKey;
+      r._asTeam = teamKey;
+      let report;
       try {
         const lineup = await lineupSuggest(r, res).catch(() => null);
-        const report = await buildReport(r, res, lineup, { team: sub.teamKey });
-        const url = unseal(sub.s)?.url;
-        const sent = url ? await postWebhook(url, report.embeds) : { sent: false, status: 0 };
-        if (sent.status === 404) { // webhook deleted: they unsubscribed
-          await delJson(SUB(sub.teamKey));
-          out.removed++;
-          return;
-        }
-        await setJson(SUB(sub.teamKey), { ...sub, lastSent: sent.sent ? new Date().toISOString() : sub.lastSent, lastError: sent.sent ? null : `Discord ${sent.status}` });
-        if (sent.sent) out.sent++; else out.failed++;
+        report = await buildReport(r, res, lineup, { team: teamKey });
       } catch (e) {
-        await setJson(SUB(sub.teamKey), { ...sub, lastError: e.message }).catch(() => {});
-        out.failed++;
+        for (const x of byTeam.get(teamKey)) await setJson(x.key, { ...x.doc, lastError: e.message }).catch(() => {});
+        out.failed += byTeam.get(teamKey).length;
+        return;
+      }
+      for (const x of byTeam.get(teamKey)) {
+        const sent = x.kind === 'hook'
+          ? await postWebhook(unseal(x.doc.s)?.url || '', report.embeds).catch(() => ({ sent: false, status: 0 }))
+          : await sendDM(x.doc.userId, report.embeds);
+        if (x.kind === 'hook' && sent.status === 404) { // webhook deleted: they unsubscribed
+          await delJson(x.key);
+          out.removed++;
+          continue;
+        }
+        await setJson(x.key, { ...x.doc, lastSent: sent.sent ? new Date().toISOString() : x.doc.lastSent, lastError: sent.sent ? null : sent.reason || `Discord ${sent.status}` });
+        if (sent.sent) out.sent++; else out.failed++;
       }
     }));
   }

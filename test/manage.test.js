@@ -103,3 +103,32 @@ test('swap signals: only-at-his-position check and value nudges', async () => {
   assert.ok(adjustedValue(0, { trend: 0.4 }) > adjustedValue(0, { trend: -0.4 }));
   assert.equal(adjustedValue(0, { trend: 5 }), adjustedValue(0, { trend: 0.6 }), 'capped');
 });
+
+test('trade grades: before vs after for both sides, letter grades', async () => {
+  const { gradeTrade, letter, parseTrades } = await import('../server/recap.js');
+  const r = (o) => ({ fgm: 6, fga: 13, ftm: 2, fta: 2.6, tpm: 1.5, pts: 15, reb: 5, ast: 3, stl: 1, blk: 0.6, to: 1.5, ...o });
+  const pl = (key, o) => ({ key, name: key, rates: r(o), avail: 1, durability: 1 });
+  const filler = k => Array.from({ length: 9 }, (_, i) => pl(`${k}${i}`, {}));
+  // After the trade: A has the star, B has the scrub
+  const rosters = [
+    { key: 'A', name: 'Alpha', players: [...filler('a'), pl('star', { pts: 30, reb: 9, stl: 2, blk: 1.5, tpm: 3 })] },
+    { key: 'B', name: 'Beta', players: [...filler('b'), pl('scrub', { pts: 6, reb: 2, stl: 0.3, blk: 0.1, tpm: 0.3 })] },
+    { key: 'C', name: 'C', players: filler('c') }, { key: 'D', name: 'D', players: filler('d') },
+  ];
+  const g = gradeTrade({ id: 't1', moves: [{ key: 'star', name: 'Star', from: 'B', to: 'A' }, { key: 'scrub', name: 'Scrub', from: 'A', to: 'B' }] }, rosters);
+  const [a, b] = g;
+  assert.equal(a.name, 'Alpha', 'winner listed first');
+  assert.deepEqual(a.gets, ['Star']);
+  assert.ok(a.delta > 0.3 && b.delta < -0.3, JSON.stringify(g));
+  assert.equal(a.grade, 'A');
+  assert.equal(b.grade, 'F');
+  assert.deepEqual(['A', 'B', 'C', 'C', 'D', 'F'], [0.2, 0.08, 0.01, -0.02, -0.05, -0.2].map(letter));
+  // Three-team trades are skipped rather than mis-graded
+  assert.equal(gradeTrade({ moves: [{ key: 'star', from: 'B', to: 'A' }, { key: 'scrub', from: 'A', to: 'C' }] }, rosters), null);
+
+  const tx = { fantasy_content: { league: [{}, { transactions: { '0': { transaction: [
+    { transaction_key: 'tk1', type: 'trade', status: 'successful', timestamp: String(Math.floor(Date.now() / 1000)) },
+    { players: { '0': { player: [[{ player_key: 'star' }, { name: { full: 'Star' } }], { transaction_data: [{ type: 'trade', source_team_key: 'B', destination_team_key: 'A' }] }] }, count: 1 } },
+  ] }, '1': { transaction: [{ transaction_key: 'old', type: 'trade', status: 'successful', timestamp: '1000' }, { players: {} }] }, count: 2 } }] } };
+  assert.deepEqual(parseTrades(tx, Date.now() - 864e5).map(t => [t.id, t.moves[0].to]), [['tk1', 'A']]);
+});
