@@ -687,3 +687,24 @@ test('discord bot: signed interactions, commands, pick’em, and the Monday spec
   KV.set('pick:3', { ...KV.get('pick:3'), lockAt: new Date(Date.now() - 1000).toISOString() });
   assert.match((await (await send({ type: 3, ...user, data: { custom_id: post.body.components[0].components[1].custom_id } })).json()).data.content, /locked/);
 });
+
+test('drop advice signals: rostered %, role trend, playoff games, position coverage', async () => {
+  const keys = 'p1,p2,p3';
+  const owned = (key, v) => ({ player: [[{ player_key: key }, { name: { full: key } }], { percent_owned: [{ coverage_type: 'week' }, { value: String(v) }] }] });
+  const pl = list => ({ fantasy_content: { league: [{}, { players: Object.assign({ count: list.length }, ...list.map((p, i) => ({ [i]: p }))) }] } });
+  FIX[`league/466.l.33458/players;player_keys=${keys}/percent_owned`] = pl([owned('p1', 99), owned('p2', 12), owned('p3', 70)]);
+  // Bench Guy (p2) shooting far less lately: role shrinking
+  FIX[`league/466.l.33458/players;player_keys=${keys}/stats;type=average_lastmonth`] = pl([
+    player('p1', 'Jayson Tatum', 'BOS', 'SF,PF', 'SF', avg), player('p2', 'Bench Guy', 'BOS', 'PG', 'BN', { ...weak, '9004003': '1/3' }), player('p3', 'Idle Man', 'LAL', 'C', 'C', avg),
+  ]);
+  const s = await (await get(`/api/week/streamers?week=3&from=${today}`)).json();
+  const opt = Object.fromEntries(s.dropOptions.map(o => [o.name, o]));
+  assert.equal(opt['Jayson Tatum'].owned, 99);
+  assert.ok(opt['Jayson Tatum'].flags.some(f => /99% rostered/.test(f)), JSON.stringify(opt['Jayson Tatum']));
+  assert.ok(opt['Bench Guy'].trend < -0.2, JSON.stringify(opt['Bench Guy']));
+  assert.ok(opt['Bench Guy'].flags.some(f => /Role shrinking/.test(f)));
+  assert.ok(opt['Idle Man'].flags.some(f => /Only healthy C/.test(f)), JSON.stringify(opt['Idle Man']));
+  // Playoff weeks 19-21 from the game-weeks fixture: BOS 1 game, LAL 1
+  assert.equal(opt['Jayson Tatum'].playoffGames, 1);
+  assert.equal(s.drop.name, 'Bench Guy', 'still the drop: low value, 12% rostered, shrinking role');
+});

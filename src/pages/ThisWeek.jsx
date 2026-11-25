@@ -173,20 +173,28 @@ export default function ThisWeek() {
               {streams.dropOptions?.length > 0 && (
                 <details className="tw-drops">
                   <summary>Who can I drop?</summary>
-                  <p className="settings-note">Rest-of-season rank among all players for your build (assists punted), from this season’s real stats blended with ESPN’s projection, with shooting slumps and hot streaks pulled back toward normal. Top {8 * 13 + 6} = worth keeping in an 8-team league.</p>
-                  <table className="gn-cats">
-                    <thead><tr><th>Player</th><th>Advice</th><th>Season rank</th><th>This week</th></tr></thead>
-                    <tbody>
-                      {streams.dropOptions.map(o => (
-                        <tr key={o.name}>
-                          <td className="stat">{o.name}{o.status ? ` (${o.status})` : ''}</td>
-                          <td className="stat"><span className={`tag ${o.advice === 'Droppable' ? 'tag-gold' : o.advice === 'Move to IL' ? 'tag-red' : 'tag-green'}`}>{o.advice}</span></td>
-                          <td className="stat">{o.rosRank ? `#${o.rosRank}` : '–'}</td>
-                          <td className="stat">−{o.weekCost.toFixed(2)} cats</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <p className="settings-note">Rest-of-season rank among all players for your build (assists punted), from this season’s real stats blended with ESPN’s projection, with shooting slumps and hot streaks pulled back toward normal. Top {8 * 13 + 6} = worth keeping in an 8-team league. The suggested drop also weighs how likely he is to be claimed off waivers, his playoff schedule, whether his role is growing, and whether he’s your only player at a position.</p>
+                  <div className="table-wrap">
+                    <table className="gn-cats">
+                      <thead><tr><th>Player</th><th>Advice</th><th>Season rank</th><th>Rostered</th><th>Playoff games</th><th>This week</th></tr></thead>
+                      <tbody>
+                        {streams.dropOptions.map(o => (
+                          <tr key={o.name}>
+                            <td className="stat">
+                              {o.name}{o.status ? ` (${o.status})` : ''}
+                              {o.flags?.length > 0 && <div className="drop-flags">{o.flags.map(f => <div key={f} className="meta">• {f}</div>)}</div>}
+                            </td>
+                            <td className="stat"><span className={`tag ${o.advice === 'Droppable' ? 'tag-gold' : o.advice === 'Move to IL' ? 'tag-red' : o.advice === 'Shop first' ? 'tag-gold' : 'tag-green'}`}>{o.advice}</span></td>
+                            <td className="stat">{o.rosRank ? `#${o.rosRank}` : '–'}</td>
+                            <td className="stat">{o.owned != null ? `${Math.round(o.owned)}%` : '–'}</td>
+                            <td className="stat">{o.playoffGames != null ? `${o.playoffGames}${o.playoffAvg ? ` / ${o.playoffAvg.toFixed(1)}` : ''}` : '–'}</td>
+                            <td className="stat">−{o.weekCost.toFixed(2)} cats</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="meta">Shop first = droppable, but enough managers roster him that someone might trade for him. Playoff games = his games in weeks 19–21 / the average team’s.</p>
                 </details>
               )}
               <p className="meta">Checked {streams.considered} free agents: the top overall plus the best available centers and power forwards.</p>

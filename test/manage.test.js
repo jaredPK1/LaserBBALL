@@ -87,3 +87,19 @@ test('trade finder: only deals that help you without hurting the other side', as
   const gets = ideas.map(d => `${d.partner.key}:${d.get}`);
   assert.equal(new Set(gets).size, gets.length);
 });
+
+test('swap signals: only-at-his-position check and value nudges', async () => {
+  const { slotShortages, adjustedValue } = await import('../server/swap.js');
+  const P = (id, posList, extra = {}) => ({ id, posList, slot: 'BN', status: '', ...extra });
+  const short = slotShortages([P('c1', ['C']), P('pf', ['PF']), P('pg', ['PG']), P('sg', ['SG', 'PG']), P('hurt', ['C'], { status: 'O' })]);
+  assert.ok(short.get('c1').includes('C'), 'only healthy C (the injured one does not count)');
+  assert.deepEqual(short.get('pg'), [], 'the SG can also play PG');
+  assert.ok(short.get('pf').includes('PF'));
+  assert.equal(short.has('hurt'), false);
+  const base = adjustedValue(0, { owned: 10, playoffGames: 10, playoffAvg: 10, trend: 0, shortSlots: [] });
+  assert.equal(base, 0);
+  assert.ok(adjustedValue(0, { owned: 80 }) > base, 'hard to get back');
+  assert.ok(adjustedValue(0, { playoffGames: 12, playoffAvg: 10 }) > adjustedValue(0, { playoffGames: 8, playoffAvg: 10 }));
+  assert.ok(adjustedValue(0, { trend: 0.4 }) > adjustedValue(0, { trend: -0.4 }));
+  assert.equal(adjustedValue(0, { trend: 5 }), adjustedValue(0, { trend: 0.6 }), 'capped');
+});

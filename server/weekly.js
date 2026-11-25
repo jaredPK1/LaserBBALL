@@ -270,7 +270,7 @@ async function weekState(req, res) {
   const w = realWeight(ctx.currentWeek);
   const toPlayer = (p, extra = {}) => {
     const r = ratesFor(p, espn, w);
-    return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos || p.pos?.join(','), slot: p.slot, status: p.status, rates: r.rates, src: r.src, avail: availability(p), ...extra };
+    return { id: p.key, name: p.name, team: nbaTeam(p.team), pos: p.displayPos || p.pos?.join(','), posList: p.pos || [], stats: p.stats, slot: p.slot, status: p.status, rates: r.rates, src: r.src, avail: availability(p), ...extra };
   };
   return {
     ctx, week, bounds, today, startDay, espn, w,
@@ -358,7 +358,14 @@ export async function weekStreamers(req, res, { limit = 15 } = {}) {
       ilEligible: IL_ELIGIBLE.has(p.status),
       weekCost: base - evalRoster(st.mine.map(x => (x.id === p.id ? { ...x, until: addDays(addFrom, -1) } : x))),
     };
-  }).sort((a, b) => (a.rosValue ?? Infinity) - (b.rosValue ?? Infinity));
+  });
+  // Rostered %, playoff schedule, role trend, position coverage (each optional)
+  const { swapSignals, adjustedValue, OWNED_STICKY } = await import('./swap.js');
+  const signals = await swapSignals(req, res, st.ctx.leagueKey, st.mine).catch(() => new Map());
+  for (const o of options) { o.sig = signals.get(o.p.id) || null; o.adj = adjustedValue(o.rosValue, o.sig); }
+  options.sort((a, b) => a.adj - b.adj);
+  // Lowest adjusted value first (harder to replace, busier playoffs, bigger
+  // role, only one at his position = keep)
   const pool = options.filter(o => !o.keeper && !o.ilEligible);
   const pick = pool[0] || options.find(o => !o.ilEligible) || null;
   const drop = pick?.p || null;
@@ -400,7 +407,9 @@ export async function weekStreamers(req, res, { limit = 15 } = {}) {
     drop: drop ? { name: drop.name, pos: drop.pos, rosRank: pick.rosRank, weekCost: pick.weekCost, allKeepers: !pool.length } : null,
     dropOptions: options.map(o => ({
       name: o.p.name, pos: o.p.pos, status: o.p.status, rosRank: o.rosRank, keeper: o.keeper, injured: o.injured, weekCost: o.weekCost,
-      advice: o.ilEligible ? 'Move to IL' : o.keeper ? (o.injured ? 'Keep (bench)' : 'Keep') : 'Droppable',
+      advice: o.ilEligible ? 'Move to IL' : o.keeper ? (o.injured ? 'Keep (bench)' : 'Keep') : o.sig?.owned >= OWNED_STICKY ? 'Shop first' : 'Droppable',
+      owned: o.sig?.owned ?? null, playoffGames: o.sig?.playoffGames ?? null, playoffAvg: o.sig?.playoffAvg ?? null,
+      trend: o.sig?.trend ?? null, flags: o.sig?.flags || [],
     })),
     streamers: ranked.slice(0, limit),
     considered: fas.length,
