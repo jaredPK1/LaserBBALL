@@ -164,3 +164,32 @@ test('trade desk keeps only win-wins, once per deal', async () => {
   const ids = deals.map(d => [d.from.key, d.partner.key].sort().join('|') + [...d.give, d.get].sort().join('|'));
   assert.equal(new Set(ids).size, ids.length);
 });
+
+test('rankings: shooting slumps and unprojected hot starts are pulled toward normal', async () => {
+  const { ratesFor, shrinkShooting } = await import('../server/weekly.js');
+  // Naz-like: projected .470 FG / .750 FT, shooting .403 / .670 on volume over 15 games
+  const proj = { name: 'Big Shooter', projected: true, pts: 17, reb: 8, ast: 2.5, stl: 1, blk: 0.7, tpm: 2.5, to: 2.3, fgm: 7.5, fga: 16, ftm: 1.9, fta: 2.5 };
+  const espn = new Map([['big shooter', proj]]);
+  const slump = { name: 'Big Shooter', stats: { '0': '15', '9004003': '6.56/16.28', '9007006': '1.7/2.54', '10': '2.5', '12': '17.4', '15': '8', '16': '2.5', '17': '1', '18': '0.7', '19': '2.3' } };
+  const r = ratesFor(slump, espn, 0).rates;
+  const fg = r.fgm / r.fga, ft = r.ftm / r.fta;
+  assert.ok(fg > 0.42 && fg < 0.46, String(fg));   // between the slump (.403) and normal (.469)
+  assert.ok(ft > 0.70 && ft < 0.75, String(ft));
+  // A big sample barely moves; a tiny one moves almost all the way to normal
+  const big = shrinkShooting({ fgm: 4, fga: 10 }, { fgm: 4, fga: 10 }, { fgm: 5, fga: 10 }, 200);
+  assert.ok(Math.abs(big.fgm / big.fga - 0.4) < 0.025);
+  const tiny = shrinkShooting({ fgm: 9, fga: 10 }, { fgm: 9, fga: 10 }, { fgm: 5, fga: 10 }, 2);
+  assert.ok(tiny.fgm / tiny.fga < 0.55);
+
+  // Larsson-like: no ESPN projection, hot .882 FT and 1.4 STL over ~10 games:
+  // blended with a typical fringe line instead of taken at face value
+  const pool = new Map();
+  pool.baseline = { pts: 10, reb: 4, ast: 2, stl: 0.8, blk: 0.4, tpm: 1.2, to: 1.2, fgm: 3.8, fga: 8.3, ftm: 1.5, fta: 2 };
+  const hot = { name: 'Hot Rookie', stats: { '0': '10', '9004003': '4.4/9', '9007006': '1.5/1.7', '10': '1.5', '12': '11.5', '15': '3.3', '16': '3.5', '17': '1.4', '18': '0.1', '19': '2.1' } };
+  const h = ratesFor(hot, pool, 0);
+  assert.match(h.src, /no projection/);
+  assert.ok(h.rates.stl < 1.4 && h.rates.stl > 0.8, String(h.rates.stl));
+  assert.ok(h.rates.ftm / h.rates.fta < 0.85, String(h.rates.ftm / h.rates.fta));
+  // Without a baseline (e.g. ESPN down) it falls back to the raw average
+  assert.equal(ratesFor(hot, new Map(), 0).rates.pts, 11.5);
+});

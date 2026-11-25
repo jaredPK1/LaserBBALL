@@ -106,6 +106,10 @@ export async function espnRates() {
     for (const p of valued) m.set(normName(p.name), { ...p, rosValue: p.value, rosRank: p.valueRank });
     m.score = valued.scorer;
     m.values = valued.filter(p => p.value != null).map(p => p.value);
+    // Typical fringe-roster line (ranks 130-200): what an unprojected player's
+    // hot or cold start gets pulled toward
+    const fringe = valued.filter(p => p.valueRank >= 130 && p.valueRank <= 200);
+    if (fringe.length) m.baseline = Object.fromEntries(KEYS.map(k => [k, fringe.reduce((a, p) => a + (p[k] || 0), 0) / fringe.length]));
     return m;
   } catch { return new Map(); }
 }
@@ -138,16 +142,43 @@ export function realWeight(currentWeek) {
 
 // Per-game rates: ESPN projection blended with Yahoo's season average by
 // weight w; either alone when the other is missing
+// Shooting percentages settle slowly: pull a player's FG%/FT% toward his
+// normal (projection, else a typical player) as if he'd taken this many more
+// shots at that rate. A cold or hot shooting month moves him, but not all the way.
+const PRIOR_ATTEMPTS = { fg: 250, ft: 120 };
+const TYPICAL_PCT = { fg: 0.47, ft: 0.78 };
+const gamesFromWeight = w => (w > 0 && w < 1 ? (HALF_AT * w) / (1 - w) : 0);
+
+export function shrinkShooting(rates, real, prior, games) {
+  const out = { ...rates };
+  for (const [m, a, key] of [['fgm', 'fga', 'fg'], ['ftm', 'fta', 'ft']]) {
+    if (!out[a]) continue;
+    const normal = prior?.[a] ? prior[m] / prior[a] : TYPICAL_PCT[key];
+    const att = (real[a] || 0) * games, made = (real[m] || 0) * games;
+    out[m] = out[a] * ((made + PRIOR_ATTEMPTS[key] * normal) / (att + PRIOR_ATTEMPTS[key]));
+  }
+  return out;
+}
+
+// Per-game rates: ESPN projection blended with this season's average by
+// weight w (from games played), shooting pulled toward normal. Players ESPN
+// doesn't project are blended with a typical fringe-roster line instead, so a
+// hot start on a small sample isn't taken at face value.
 export function ratesFor(p, espn, wWeek = 0) {
   const e = espn.get(normName(p.name));
   const y = yahooLine(p.stats || {});
   const gp = Number(p.stats?.['0']) || 0;
   const w = gp ? gamesWeight(gp) : wWeek;
+  const games = gp || gamesFromWeight(w);
   const hasReal = y.pts > 0 || y.fga > 0;
+  const blend = base => Object.fromEntries(KEYS.map(k => [k, (1 - w) * (base[k] || 0) + w * (y[k] || 0)]));
   if (e && hasReal && w > 0) {
-    return { src: `${Math.round(w * 100)}% this season`, rates: Object.fromEntries(KEYS.map(k => [k, (1 - w) * (e[k] || 0) + w * (y[k] || 0)])) };
+    return { src: `${Math.round(w * 100)}% this season`, rates: shrinkShooting(blend(e), y, e, games) };
   }
   if (e) return { src: e.projected ? 'projection' : 'last season', rates: Object.fromEntries(KEYS.map(k => [k, e[k] || 0])) };
+  if (hasReal && espn.baseline && w > 0) {
+    return { src: `${Math.round(w * 100)}% this season (no projection)`, rates: shrinkShooting(blend(espn.baseline), y, null, games) };
+  }
   return { src: hasReal ? 'season avg' : 'none', rates: Object.fromEntries(KEYS.map(k => [k, y[k] || 0])) };
 }
 
